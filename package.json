@@ -1,0 +1,24 @@
+{
+  "name": "signalk-notification-dispatcher",
+  "version": "0.1.0",
+  "description": "SignalK plugin that reads notifications from other vessels (vessels.*.notifications.*) and forwards or suppresses them, rule-based, into vessels.self.notifications.received.*",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-category-notifications"
+  ],
+  "signalk-plugin-enabled-by-default": false,
+  "author": "Tobias Rosenstock (humppafreak)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BoatHacks/signalk-notification-dispatcher.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {}
+}

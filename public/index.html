@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="version" content="0.1.0" />
+<title>Notification Dispatcher</title>
+<style>
+  :root {
+    --bg: #10151b;
+    --panel: #1a222b;
+    --panel-alt: #212b36;
+    --border: #2c3946;
+    --text: #e4ebf1;
+    --text-dim: #8ea0b0;
+    --accent: #3fa6e0;
+    --forward: #3fb87f;
+    --suppress: #d97757;
+    --danger: #e05656;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; color: var(--text-dim); font-size: 13px; }
+  main { padding: 16px 20px; max-width: 1100px; margin: 0 auto; }
+  .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px; }
+  .toolbar-left { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .toolbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .policy-control { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim); }
+  .policy-control select {
+    background: var(--panel-alt); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 5px 8px; font-size: 13px; font-weight: 600;
+  }
+  button {
+    background: var(--accent);
+    color: #08131c;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button.secondary { background: var(--panel-alt); color: var(--text); border: 1px solid var(--border); }
+  button.danger { background: var(--danger); color: #fff; }
+  table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 8px; overflow: hidden; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+  th { color: var(--text-dim); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.04em; }
+  tr:last-child td { border-bottom: none; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge.ACCEPT { background: rgba(63,184,127,0.15); color: var(--forward); }
+  .badge.DROP { background: rgba(217,119,87,0.15); color: var(--suppress); }
+  .badge.off { background: rgba(142,160,176,0.15); color: var(--text-dim); }
+  .states { color: var(--text-dim); font-size: 12px; }
+  .row-actions { display: flex; gap: 6px; }
+  .row-actions button { padding: 4px 8px; font-size: 12px; }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center; z-index: 10;
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; width: 480px; max-width: 92vw; max-height: 88vh; overflow-y: auto;
+  }
+  .modal h2 { margin: 0 0 14px; font-size: 16px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .field input[type=text], .field select, .field textarea {
+    width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--panel-alt); color: var(--text); font-size: 13px; font-family: inherit;
+  }
+  .checkbox-grid { display: flex; flex-wrap: wrap; gap: 10px; }
+  .checkbox-grid label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); margin: 0; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+  .empty { color: var(--text-dim); padding: 30px; text-align: center; }
+  details { margin-top: 16px; background: var(--panel); border-radius: 8px; border: 1px solid var(--border); }
+  summary { padding: 10px 12px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
+  .activity-item { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; display: flex; gap: 8px; align-items: baseline; }
+  .activity-item .path { color: var(--text-dim); }
+  code { background: var(--panel-alt); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  .json-editor { padding: 12px; }
+  .json-editor textarea {
+    width: 100%; min-height: 320px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.5; resize: vertical;
+  }
+  .json-editor-actions { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .json-editor-error { color: var(--danger); font-size: 12px; margin-top: 8px; white-space: pre-wrap; }
+  .json-editor-ok { color: var(--forward); font-size: 12px; margin-top: 8px; }
+  input[type=file] { display: none; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script type="module">
+import { h, render, Component } from 'https://unpkg.com/preact@10.19.3?module'
+import { useState, useEffect, useRef } from 'https://unpkg.com/preact@10.19.3/hooks/dist/hooks.module.js?module'
+import htm from 'https://unpkg.com/htm@3.1.1?module'
+
+const html = htm.bind(h)
+const BASE = '.'
+const ALL_STATES = ['nominal', 'normal', 'alert', 'warn', 'alarm', 'emergency']
+
+function emptyRule() {
+  return {
+    enabled: true,
+    label: '',
+    match: {
+      path: '*',
+      vessel: '*',
+      states: ['alert', 'warn', 'alarm', 'emergency'],
+      timebox: { enabled: false, times: [], toleranceMinutes: 5 },
+      vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
+    },
+    target: 'ACCEPT',
+    targetPathTemplate: 'notifications.received.{vessel}.{path}',
+  }
+}
+
+function RuleModal({ rule, onSave, onClose }) {
+  const [form, setForm] = useState(rule)
+  const set = (k, v) => setForm({ ...form, [k]: v })
+  const match = form.match
+  const setMatch = (patch) => set('match', { ...match, ...patch })
+  const toggleState = (s) => {
+    const has = match.states.includes(s)
+    setMatch({ states: has ? match.states.filter((x) => x !== s) : [...match.states, s] })
+  }
+
+  const timebox = match.timebox
+  const setTimebox = (patch) => setMatch({ timebox: { ...timebox, ...patch } })
+  const [timesText, setTimesText] = useState((timebox.times || []).join('; '))
+
+  const vesselState = match.vesselState
+  const setVesselState = (patch) => setMatch({ vesselState: { ...vesselState, ...patch } })
+
+  const handleSave = () => {
+    onSave({
+      ...form,
+      match: {
+        ...match,
+        timebox: {
+          ...timebox,
+          times: timesText.split(';').map((t) => t.trim()).filter(Boolean),
+        },
+      },
+    })
+  }
+
+  return html`
+    <div class="modal-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="modal">
+        <h2>${form.id ? 'Edit rule' : 'New rule'}</h2>
+
+        <div class="field">
+          <label>Label (optional, shown instead of the rule id)</label>
+          <input type="text" value=${form.label} onInput=${(e) => set('label', e.target.value)} placeholder="e.g. Buddy boat anchor alarms" />
+        </div>
+
+        <div class="field">
+          <label>Notification path pattern (matched after "notifications.", "*" wildcard allowed)</label>
+          <input type="text" value=${match.path} onInput=${(e) => setMatch({ path: e.target.value })} placeholder="navigation.anchor*" />
+        </div>
+
+        <div class="field">
+          <label>Source vessel filter (MMSI, context, or "*" for any vessel)</label>
+          <input type="text" value=${match.vessel} onInput=${(e) => setMatch({ vessel: e.target.value })} placeholder="219018985" />
+        </div>
+
+        <div class="field">
+          <label>Notification states to match</label>
+          <div class="checkbox-grid">
+            ${ALL_STATES.map((s) => html`
+              <label><input type="checkbox" checked=${match.states.includes(s)} onChange=${() => toggleState(s)} /> ${s}</label>
+            `)}
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Target</label>
+          <select value=${form.target} onChange=${(e) => set('target', e.target.value)}>
+            <option value="ACCEPT">ACCEPT — forward into vessels.self.notifications.received.*</option>
+            <option value="DROP">DROP — suppress silently</option>
+          </select>
+        </div>
+
+        ${form.target === 'ACCEPT' && html`
+          <div class="field">
+            <label>Target path template (<code>{vessel}</code> and <code>{path}</code> placeholders)</label>
+            <input type="text" value=${form.targetPathTemplate} onInput=${(e) => set('targetPathTemplate', e.target.value)} />
+          </div>
+        `}
+
+        <div class="field">
+          <label><input type="checkbox" checked=${timebox.enabled} onChange=${(e) => setTimebox({ enabled: e.target.checked })} /> Restrict to specific times (UTC)</label>
+        </div>
+
+        ${timebox.enabled && html`
+          <div class="field">
+            <label>Anchor times, semicolon-separated. Either "HH:MM" UTC, or a full 5-field crontab expression (min hour dom month dow, UTC) for expert use</label>
+            <input type="text" value=${timesText} onInput=${(e) => setTimesText(e.target.value)} placeholder="02:15; 06:15; 10:15; 14:15; 18:15; 22:15  —or—  15 2,6,10,14,18,22 * * *" />
+          </div>
+
+          <div class="field">
+            <label>Tolerance (± minutes around each anchor time)</label>
+            <input type="text" value=${timebox.toleranceMinutes} onInput=${(e) => setTimebox({ toleranceMinutes: Number(e.target.value) || 0 })} placeholder="5" />
+          </div>
+        `}
+
+        <div class="field">
+          <label>Don't match while own vessel is</label>
+          <div class="checkbox-grid">
+            <label><input type="checkbox" checked=${vesselState.blockWhenMoored} onChange=${(e) => setVesselState({ blockWhenMoored: e.target.checked })} /> Moored</label>
+            <label><input type="checkbox" checked=${vesselState.blockWhenAnchored} onChange=${(e) => setVesselState({ blockWhenAnchored: e.target.checked })} /> Anchored</label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label><input type="checkbox" checked=${form.enabled} onChange=${(e) => set('enabled', e.target.checked)} /> Rule enabled</label>
+        </div>
+
+        <div class="modal-actions">
+          <button class="secondary" onClick=${onClose}>Cancel</button>
+          <button onClick=${handleSave}>Save rule</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+function JsonEditor({ ruleset, onApply }) {
+  const [text, setText] = useState(JSON.stringify(ruleset, null, 2))
+  const [error, setError] = useState(null)
+  const [ok, setOk] = useState(false)
+
+  useEffect(() => {
+    setText(JSON.stringify(ruleset, null, 2))
+  }, [ruleset])
+
+  const validate = () => {
+    try {
+      const parsed = JSON.parse(text)
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        throw new Error('Top level must be an object with "policy" and "rules"')
+      }
+      if (parsed.rules !== undefined && !Array.isArray(parsed.rules)) {
+        throw new Error('"rules" must be an array')
+      }
+      setError(null)
+      setOk(true)
+      return parsed
+    } catch (e) {
+      setError(e.message)
+      setOk(false)
+      return null
+    }
+  }
+
+  const apply = () => {
+    const parsed = validate()
+    if (parsed) onApply(parsed)
+  }
+
+  return html`
+    <div class="json-editor">
+      <textarea spellcheck="false" value=${text} onInput=${(e) => { setText(e.target.value); setOk(false); setError(null) }}></textarea>
+      <div class="json-editor-actions">
+        <button class="secondary" onClick=${() => setText(JSON.stringify(ruleset, null, 2))}>Reset to current</button>
+        <button class="secondary" onClick=${validate}>Validate</button>
+        <button onClick=${apply}>Apply ruleset</button>
+      </div>
+      ${error && html`<div class="json-editor-error">${error}</div>`}
+      ${ok && !error && html`<div class="json-editor-ok">Valid — ready to apply.</div>`}
+    </div>
+  `
+}
+
+function App() {
+  const [ruleset, setRuleset] = useState({ policy: 'ACCEPT', rules: [] })
+  const [activity, setActivity] = useState([])
+  const [editing, setEditing] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const fileInputRef = useRef(null)
+
+  const loadRuleset = () => fetch(`${BASE}/ruleset`).then((r) => r.json()).then(setRuleset)
+  const loadActivity = () => fetch(`${BASE}/activity`).then((r) => r.json()).then(setActivity)
+
+  useEffect(() => {
+    Promise.all([loadRuleset(), loadActivity()]).finally(() => setLoading(false))
+    const t = setInterval(loadActivity, 5000)
+    return () => clearInterval(t)
+  }, [])
+
+  const saveRule = (rule) => {
+    const isNew = !rule.id
+    const req = isNew
+      ? fetch(`${BASE}/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) })
+      : fetch(`${BASE}/rules/${rule.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) })
+    req.then(() => { setEditing(null); loadRuleset() })
+  }
+
+  const deleteRule = (rule) => {
+    if (!confirm(`Delete rule "${rule.label || rule.match.path}"?`)) return
+    fetch(`${BASE}/rules/${rule.id}`, { method: 'DELETE' }).then(loadRuleset)
+  }
+
+  const toggleEnabled = (rule) => {
+    fetch(`${BASE}/rules/${rule.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled: !rule.enabled }),
+    }).then(loadRuleset)
+  }
+
+  const setPolicy = (policy) => {
+    fetch(`${BASE}/policy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ policy }),
+    }).then(loadRuleset)
+  }
+
+  const applyRuleset = (parsed) => {
+    fetch(`${BASE}/ruleset`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(parsed),
+    }).then((r) => r.json()).then(setRuleset)
+  }
+
+  const exportRuleset = () => {
+    const blob = new Blob([JSON.stringify(ruleset, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'notification-dispatcher-ruleset.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const importRuleset = (e) => {
+    const file = e.target.files && e.target.files[0]
+    if (!file) return
+    file.text().then((text) => {
+      try {
+        const parsed = JSON.parse(text)
+        applyRuleset(parsed)
+      } catch (err) {
+        alert(`Couldn't parse ${file.name} as JSON: ${err.message}`)
+      }
+    })
+    e.target.value = ''
+  }
+
+  const rules = ruleset.rules || []
+
+  return html`
+    <div>
+      <header>
+        <h1>Notification Dispatcher</h1>
+        <p>Rules run top to bottom; the first match wins. Notifications matching no rule fall through to the default policy below.</p>
+      </header>
+      <main>
+        <div class="toolbar">
+          <div class="toolbar-left">
+            <span class="states">${rules.length} rule${rules.length === 1 ? '' : 's'}</span>
+            <div class="policy-control">
+              <span>Default policy:</span>
+              <select value=${ruleset.policy} onChange=${(e) => setPolicy(e.target.value)}>
+                <option value="ACCEPT">ACCEPT (forward)</option>
+                <option value="DROP">DROP (suppress)</option>
+              </select>
+            </div>
+          </div>
+          <div class="toolbar-right">
+            <button class="secondary" onClick=${exportRuleset}>Export JSON</button>
+            <button class="secondary" onClick=${() => fileInputRef.current.click()}>Import JSON</button>
+            <input ref=${fileInputRef} type="file" accept="application/json,.json" onChange=${importRuleset} />
+            <button onClick=${() => setEditing(emptyRule())}>+ Add rule</button>
+          </div>
+        </div>
+
+        ${loading ? html`<div class="empty">Loading…</div>` : rules.length === 0 ? html`
+          <div class="empty">No rules yet. The default policy (<strong>${ruleset.policy}</strong>) applies to every notification.</div>
+        ` : html`
+          <table>
+            <thead>
+              <tr>
+                <th>Label</th>
+                <th>Path pattern</th>
+                <th>Vessel</th>
+                <th>States</th>
+                <th>Timebox (UTC)</th>
+                <th>Skip when</th>
+                <th>Target</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rules.map((rule) => html`
+                <tr>
+                  <td>${rule.label || html`<em>(unlabeled)</em>`}</td>
+                  <td><code>${rule.match.path}</code></td>
+                  <td><code>${rule.match.vessel}</code></td>
+                  <td class="states">${(rule.match.states || []).join(', ')}</td>
+                  <td class="states">
+                    ${rule.match.timebox && rule.match.timebox.enabled && (rule.match.timebox.times || []).length
+                      ? html`${rule.match.timebox.times.join('; ')} ±${rule.match.timebox.toleranceMinutes ?? 5}m`
+                      : 'any time'}
+                  </td>
+                  <td class="states">
+                    ${[
+                      rule.match.vesselState && rule.match.vesselState.blockWhenMoored ? 'moored' : null,
+                      rule.match.vesselState && rule.match.vesselState.blockWhenAnchored ? 'anchored' : null,
+                    ].filter(Boolean).join(', ') || '—'}
+                  </td>
+                  <td>
+                    ${rule.enabled === false
+                      ? html`<span class="badge off">disabled</span>`
+                      : html`<span class="badge ${rule.target}">${rule.target}</span>`}
+                  </td>
+                  <td class="row-actions">
+                    <button class="secondary" onClick=${() => toggleEnabled(rule)}>${rule.enabled === false ? 'Enable' : 'Disable'}</button>
+                    <button class="secondary" onClick=${() => setEditing(rule)}>Edit</button>
+                    <button class="danger" onClick=${() => deleteRule(rule)}>Delete</button>
+                  </td>
+                </tr>
+              `)}
+            </tbody>
+          </table>
+        `}
+
+        <details>
+          <summary>Ruleset JSON editor (view, edit, or paste a full ruleset)</summary>
+          <${JsonEditor} ruleset=${ruleset} onApply=${applyRuleset} />
+        </details>
+
+        <details>
+          <summary>Recent activity (${activity.length})</summary>
+          ${activity.length === 0 ? html`<div class="empty">Nothing accepted or dropped yet.</div>` : activity.map((a) => html`
+            <div class="activity-item">
+              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : 'DROP'}">${a.action}</span>
+              <span class="path">${a.sourcePath}</span>
+              ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
+              <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>
+            </div>
+          `)}
+        </details>
+      </main>
+
+      ${editing && html`<${RuleModal} rule=${editing} onSave=${saveRule} onClose=${() => setEditing(null)} />`}
+    </div>
+  `
+}
+
+render(html`<${App} />`, document.getElementById('app'))
+</script>
+</body>
+</html>
