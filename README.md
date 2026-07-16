@@ -64,6 +64,11 @@ managed as JSON directly from the webapp:
   applying) and **Apply ruleset** (validates, then saves and reloads the
   rule table) buttons.
 
+The full shape is formally described in
+[`docs/rules-schema.json`](docs/rules-schema.json) (JSON Schema, draft
+2020-12) — useful for validating a hand-edited ruleset before importing it,
+or for editor autocomplete.
+
 Example ruleset:
 
 ```json
@@ -86,7 +91,8 @@ Example ruleset:
         "vesselState": { "blockWhenMoored": false, "blockWhenAnchored": false }
       },
       "target": "DROP",
-      "targetPathTemplate": "notifications.received.{vessel}.{path}"
+      "targetPathTemplate": "notifications.received.{vessel}.{path}",
+      "modify": { "state": null }
     }
   ]
 }
@@ -98,7 +104,10 @@ Example ruleset:
 npm install
 ```
 
-The plugin has no runtime dependencies beyond Node's built-ins. The ruleset
+The plugin has no runtime dependencies beyond Node's built-ins (the test
+suite has one devDependency, `ajv`, used only to validate rulesets against
+`docs/rules-schema.json` in tests - it's never required by the plugin
+itself). The ruleset
 is persisted as JSON under the plugin's SignalK data directory
 (`ruleset.json`), not in the plugin's own config schema, since it's managed
 entirely through the webapp. A one-time migration runs automatically if an

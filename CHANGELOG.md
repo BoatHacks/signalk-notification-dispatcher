@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- Exported the ruleset/rule shape as a formal JSON Schema (draft 2020-12) at `docs/rules-schema.json`, useful for validating a hand-edited ruleset before import or for editor autocomplete; added `test/schema.test.js` (using `ajv` as a devDependency) to keep it honest against real plugin output
 - New `MODIFY` rule target: forwards a notification like `ACCEPT`, but first overrides its `state` (e.g. downgrading a recurring securité broadcast from `warn` to `alert` instead of dropping it outright)
 - Fixed: added the `signalk-webapp` keyword to `package.json` so the webapp shows up under the SignalK admin UI's Webapps menu
 - Test suite (`node --test`, no new dependencies): rule matching, default policy, timebox (HH:MM and crontab), vessel-state gating, `/rules` and `/ruleset` REST endpoints, `MODIFY` target, and legacy `rules.json` migration

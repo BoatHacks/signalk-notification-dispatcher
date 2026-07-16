@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/BoatHacks/signalk-notification-dispatcher/docs/rules-schema.json",
+  "title": "signalk-notification-dispatcher ruleset",
+  "description": "Shape of the ruleset persisted as ruleset.json and exchanged via the GET/PUT /ruleset REST endpoint and the webapp's JSON import/export/editor. Modeled like an iptables firewall chain: an ordered list of rules, each with a match block and a target, plus a chain-level default policy applied when no rule matches.",
+  "type": "object",
+  "properties": {
+    "policy": {
+      "description": "Default target applied when no rule in the chain matches a notification.",
+      "$ref": "#/$defs/policyTarget",
+      "default": "ACCEPT"
+    },
+    "rules": {
+      "description": "Ordered list of filter rules, evaluated top to bottom. The first matching rule decides the outcome; if none match, `policy` applies.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/rule" },
+      "default": []
+    }
+  },
+  "required": ["policy", "rules"],
+  "additionalProperties": false,
+
+  "$defs": {
+    "policyTarget": {
+      "description": "A chain-level default target: ACCEPT (forward) or DROP (suppress). Unlike a rule's target, the default policy cannot be MODIFY.",
+      "type": "string",
+      "enum": ["ACCEPT", "DROP"]
+    },
+
+    "notificationState": {
+      "description": "SignalK notification severity state.",
+      "type": "string",
+      "enum": ["nominal", "normal", "alert", "warn", "alarm", "emergency"]
+    },
+
+    "timeboxEntry": {
+      "description": "Either a simple 24h UTC anchor time (\"HH:MM\"), or a standard 5-field crontab expression (\"minute hour dom month dow\", UTC) for expert use, e.g. \"15 2,6,10,14,18,22 * * *\".",
+      "type": "string",
+      "pattern": "^([01]?\\d|2[0-3]):[0-5]\\d$|^(\\S+\\s+){4}\\S+$"
+    },
+
+    "timebox": {
+      "description": "Optional time-of-day restriction on a rule. When enabled, the rule only matches within +/- toleranceMinutes of one of the given anchor times (handles wraparound across midnight).",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": false
+        },
+        "times": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/timeboxEntry" },
+          "default": []
+        },
+        "toleranceMinutes": {
+          "description": "Tolerance window, in minutes, applied on either side of each anchor time.",
+          "type": "number",
+          "minimum": 0,
+          "default": 5
+        }
+      },
+      "required": ["enabled", "times", "toleranceMinutes"],
+      "additionalProperties": false
+    },
+
+    "vesselState": {
+      "description": "Per-rule gate based on the own vessel's navigation.state. Independent toggles; either or both can be enabled. If the own vessel is currently in a state with its toggle enabled, the rule is skipped as if it hadn't matched (evaluation falls through to the next rule, or to the default policy).",
+      "type": "object",
+      "properties": {
+        "blockWhenMoored": { "type": "boolean", "default": false },
+        "blockWhenAnchored": { "type": "boolean", "default": false }
+      },
+      "required": ["blockWhenMoored", "blockWhenAnchored"],
+      "additionalProperties": false
+    },
+
+    "match": {
+      "description": "The conditions a notification must meet for this rule to apply. All conditions must hold (logical AND).",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "Glob pattern matched against the notification path with the leading \"notifications.\" stripped. \"*\" matches any run of characters, including \".\" (so \"navigation.anchor*\" matches \"navigation.anchorDrag\"). \"*\" alone or an empty string matches everything.",
+          "type": "string",
+          "default": "*"
+        },
+        "vessel": {
+          "description": "Glob pattern (same wildcard rules as `path`) matched against either the notification's source vessel MMSI/label or its full SignalK context string. \"*\" matches any vessel.",
+          "type": "string",
+          "default": "*"
+        },
+        "states": {
+          "description": "Notification states that trigger this rule.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/notificationState" },
+          "default": ["alert", "warn", "alarm", "emergency"]
+        },
+        "timebox": {
+          "$ref": "#/$defs/timebox",
+          "default": { "enabled": false, "times": [], "toleranceMinutes": 5 }
+        },
+        "vesselState": {
+          "$ref": "#/$defs/vesselState",
+          "default": { "blockWhenMoored": false, "blockWhenAnchored": false }
+        }
+      },
+      "required": ["path", "vessel", "states", "timebox", "vesselState"],
+      "additionalProperties": false
+    },
+
+    "modify": {
+      "description": "Only meaningful when the rule's target is MODIFY: overrides applied to the notification before it's forwarded. Currently supports overriding `state`; extend here if more fields need to be modifiable later.",
+      "type": "object",
+      "properties": {
+        "state": {
+          "description": "Overrides the notification's own `state` while forwarding it, e.g. downgrading a recurring securité broadcast from warn to alert instead of dropping it outright. null means no override.",
+          "anyOf": [{ "$ref": "#/$defs/notificationState" }, { "type": "null" }],
+          "default": null
+        }
+      },
+      "required": ["state"],
+      "additionalProperties": false
+    },
+
+    "rule": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "description": "Stable identifier, generated server-side if omitted on creation/import.",
+          "type": "string"
+        },
+        "label": {
+          "description": "Optional human-readable label shown in the webapp and activity log instead of the id.",
+          "type": "string",
+          "default": ""
+        },
+        "enabled": {
+          "description": "Disabled rules are skipped entirely during matching.",
+          "type": "boolean",
+          "default": true
+        },
+        "match": { "$ref": "#/$defs/match" },
+        "target": {
+          "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see `modify`), or DROP (suppress silently).",
+          "type": "string",
+          "enum": ["ACCEPT", "MODIFY", "DROP"],
+          "default": "ACCEPT"
+        },
+        "targetPathTemplate": {
+          "description": "Only used when target is ACCEPT or MODIFY. Template for the forwarded path under vessels.self.notifications.*, with {vessel} and {path} placeholders.",
+          "type": "string",
+          "default": "notifications.received.{vessel}.{path}"
+        },
+        "modify": {
+          "$ref": "#/$defs/modify",
+          "default": { "state": null }
+        }
+      },
+      "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify"],
+      "additionalProperties": false
+    }
+  }
+}
