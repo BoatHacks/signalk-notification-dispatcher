@@ -1,7 +1,9 @@
 # Changelog
 
 ## [Unreleased]
-- Test suite (`node --test`, no new dependencies): rule matching, default policy, timebox (HH:MM and crontab), vessel-state gating, `/rules` and `/ruleset` REST endpoints, and legacy `rules.json` migration
+- New `MODIFY` rule target: forwards a notification like `ACCEPT`, but first overrides its `state` (e.g. downgrading a recurring securité broadcast from `warn` to `alert` instead of dropping it outright)
+- Fixed: added the `signalk-webapp` keyword to `package.json` so the webapp shows up under the SignalK admin UI's Webapps menu
+- Test suite (`node --test`, no new dependencies): rule matching, default policy, timebox (HH:MM and crontab), vessel-state gating, `/rules` and `/ruleset` REST endpoints, `MODIFY` target, and legacy `rules.json` migration
 - CI: `.github/workflows/ci.yml` calling the reusable SignalK `plugin-ci.yml` workflow (Node 22/24 across Linux, Linux arm64, macOS, Windows, and armv7 under QEMU)
 
 ## [0.1.0] - initial scaffold

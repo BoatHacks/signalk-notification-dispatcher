@@ -58,6 +58,7 @@
   tr:last-child td { border-bottom: none; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .badge.ACCEPT { background: rgba(63,184,127,0.15); color: var(--forward); }
+  .badge.MODIFY { background: rgba(63,166,224,0.15); color: var(--accent); }
   .badge.DROP { background: rgba(217,119,87,0.15); color: var(--suppress); }
   .badge.off { background: rgba(142,160,176,0.15); color: var(--text-dim); }
   .states { color: var(--text-dim); font-size: 12px; }
@@ -122,6 +123,7 @@ function emptyRule() {
     },
     target: 'ACCEPT',
     targetPathTemplate: 'notifications.received.{vessel}.{path}',
+    modify: { state: null },
   }
 }
 
@@ -188,11 +190,22 @@ function RuleModal({ rule, onSave, onClose }) {
           <label>Target</label>
           <select value=${form.target} onChange=${(e) => set('target', e.target.value)}>
             <option value="ACCEPT">ACCEPT — forward into vessels.self.notifications.received.*</option>
+            <option value="MODIFY">MODIFY — forward, overriding a field first</option>
             <option value="DROP">DROP — suppress silently</option>
           </select>
         </div>
 
-        ${form.target === 'ACCEPT' && html`
+        ${form.target === 'MODIFY' && html`
+          <div class="field">
+            <label>Override state to</label>
+            <select value=${form.modify.state || ''} onChange=${(e) => set('modify', { ...form.modify, state: e.target.value || null })}>
+              <option value="">(no override)</option>
+              ${ALL_STATES.map((s) => html`<option value=${s}>${s}</option>`)}
+            </select>
+          </div>
+        `}
+
+        ${(form.target === 'ACCEPT' || form.target === 'MODIFY') && html`
           <div class="field">
             <label>Target path template (<code>{vessel}</code> and <code>{path}</code> placeholders)</label>
             <input type="text" value=${form.targetPathTemplate} onInput=${(e) => set('targetPathTemplate', e.target.value)} />
@@ -447,7 +460,7 @@ function App() {
           <summary>Recent activity (${activity.length})</summary>
           ${activity.length === 0 ? html`<div class="empty">Nothing accepted or dropped yet.</div>` : activity.map((a) => html`
             <div class="activity-item">
-              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : 'DROP'}">${a.action}</span>
+              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : 'DROP'}">${a.action}</span>
               <span class="path">${a.sourcePath}</span>
               ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
               <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>

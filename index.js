@@ -69,9 +69,17 @@ module.exports = function (app) {
           blockWhenAnchored: !!(match.vesselState && match.vesselState.blockWhenAnchored),
         },
       },
-      target: src.target === 'DROP' ? 'DROP' : 'ACCEPT',
+      target: src.target === 'DROP' ? 'DROP' : src.target === 'MODIFY' ? 'MODIFY' : 'ACCEPT',
       targetPathTemplate:
         typeof src.targetPathTemplate === 'string' ? src.targetPathTemplate : DEFAULT_TARGET_PATH_TEMPLATE,
+      // Only meaningful when target === 'MODIFY': overrides the notification's
+      // own fields while forwarding it. Currently supports overriding `state`
+      // (e.g. downgrading a recurring securité call from warn to alert
+      // instead of dropping it outright) - extend here if more fields need
+      // to be modifiable later.
+      modify: {
+        state: ALL_STATES.includes(src.modify && src.modify.state) ? src.modify.state : null,
+      },
     }
   }
 
@@ -344,6 +352,9 @@ module.exports = function (app) {
           return
         }
 
+        const isModify = effectiveRule.target === 'MODIFY' && effectiveRule.modify && effectiveRule.modify.state
+        const outValue = isModify ? { ...value, state: effectiveRule.modify.state } : value
+
         const targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel })
         app.handleMessage(plugin.id, {
           updates: [
@@ -351,7 +362,7 @@ module.exports = function (app) {
               values: [
                 {
                   path: targetPath,
-                  value,
+                  value: outValue,
                 },
               ],
             },
@@ -359,12 +370,12 @@ module.exports = function (app) {
         })
 
         logActivity({
-          action: 'accept',
+          action: isModify ? 'modify' : 'accept',
           rule: effectiveRule.label || effectiveRule.id,
           sourcePath: valuePath,
           targetPath,
           vessel: vesselLabel,
-          state,
+          state: isModify ? `${state}→${effectiveRule.modify.state}` : state,
         })
       })
     })
