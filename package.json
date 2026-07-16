@@ -4,7 +4,8 @@
   "description": "SignalK plugin that reads notifications from other vessels (vessels.*.notifications.*) and forwards or suppresses them, rule-based, into vessels.self.notifications.received.*",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "keywords": [
     "signalk-node-server-plugin",

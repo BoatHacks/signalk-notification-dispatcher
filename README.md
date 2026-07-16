@@ -103,6 +103,26 @@ entirely through the webapp. A one-time migration runs automatically if an
 older `rules.json` (pre-iptables-style, flat rule array) is found and no
 `ruleset.json` exists yet.
 
+### Testing
+
+```
+npm test
+```
+
+Runs the test suite with Node's built-in test runner (`node --test`, no
+extra devDependencies). Tests live in `test/` and cover rule matching
+(path/vessel/state/order), the default policy, timebox conditions (both
+`HH:MM` and crontab expert-mode entries), vessel-state gating, the `/rules`
+and `/ruleset` REST endpoints, and the legacy `rules.json` migration. Shared
+test helpers (a fake SignalK `app`, a router-call shim) live in
+`test-support/`, deliberately outside `test/` so Node's default test-file
+discovery doesn't try to run them as tests themselves.
+
+CI runs this suite via the reusable [SignalK plugin-ci
+workflow](https://github.com/SignalK/signalk-server/blob/master/.github/workflows/plugin-ci.yml)
+(`.github/workflows/ci.yml`), across Node 22/24 on Linux, Linux arm64, macOS,
+Windows, and armv7 (Cerbo GX-class hardware) under QEMU.
+
 ## License
 
 MIT
