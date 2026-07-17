@@ -26,7 +26,7 @@ test('policy: an ACCEPT rule still forwards even when the default policy is DROP
   h.sendDelta({ mmsi: '1', path: 'navigation.anchor', state: 'alarm' })
   assert.equal(h.state.forwarded.length, 1)
 
-  h.sendDelta({ mmsi: '1', path: 'safety.other', state: 'alert' })
+  h.sendDelta({ mmsi: '1', path: 'safety.other', state: 'warn' })
   assert.equal(h.state.forwarded.length, 1, 'non-matching path should still hit the DROP policy')
   h.cleanup()
 })

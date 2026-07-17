@@ -8,14 +8,14 @@ test('modify: forwards the notification with the overridden state', () => {
     label: 'downgrade palma securite',
     match: { path: 'safety.*', vessel: '*' },
     target: 'MODIFY',
-    modify: { state: 'alert' },
+    modify: { state: 'warn' },
   })
 
-  h.sendDelta({ mmsi: '224123456', path: 'safety.securite', state: 'warn', message: 'avisos a los navegantes' })
+  h.sendDelta({ mmsi: '224123456', path: 'safety.securite', state: 'alarm', message: 'avisos a los navegantes' })
 
   assert.equal(h.state.forwarded.length, 1, 'MODIFY should still forward, not drop')
   const forwardedValue = h.state.forwarded[0].updates[0].values[0].value
-  assert.equal(forwardedValue.state, 'alert')
+  assert.equal(forwardedValue.state, 'warn')
   assert.equal(forwardedValue.message, 'avisos a los navegantes', 'other fields should be untouched')
   h.cleanup()
 })
@@ -25,10 +25,10 @@ test('modify: uses the same target path template as ACCEPT', () => {
   h.call('POST', '/rules', {
     match: { path: 'safety.securite', vessel: '*' },
     target: 'MODIFY',
-    modify: { state: 'alert' },
+    modify: { state: 'warn' },
     targetPathTemplate: 'notifications.received.custom.{vessel}.{path}',
   })
-  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'warn' })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
   assert.equal(
     h.state.forwarded[0].updates[0].values[0].path,
     'notifications.received.custom.1.safety.securite'
@@ -42,13 +42,13 @@ test('modify: is logged as "modify" with a from→to state summary', () => {
     label: 'downgrade',
     match: { path: 'safety.*', vessel: '*' },
     target: 'MODIFY',
-    modify: { state: 'alert' },
+    modify: { state: 'warn' },
   })
-  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'warn' })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
 
   const activity = h.call('GET', '/activity').json
   assert.equal(activity[0].action, 'modify')
-  assert.equal(activity[0].state, 'warn→alert')
+  assert.equal(activity[0].state, 'alarm→warn')
   assert.equal(activity[0].rule, 'downgrade')
   h.cleanup()
 })
@@ -60,10 +60,10 @@ test('modify: an invalid/unknown override state is ignored, forwards unchanged (
     target: 'MODIFY',
     modify: { state: 'not-a-real-state' },
   })
-  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'warn' })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
 
   assert.equal(h.state.forwarded.length, 1)
-  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'warn', 'should keep original state')
+  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'alarm', 'should keep original state')
   const activity = h.call('GET', '/activity').json
   assert.equal(activity[0].action, 'accept', 'without a valid override it behaves like a plain ACCEPT')
   h.cleanup()
@@ -82,11 +82,11 @@ test('modify: works via the default policy is not applicable, but a MODIFY rule 
     label: 'modify-first',
     match: { path: 'safety.*', vessel: '*' },
     target: 'MODIFY',
-    modify: { state: 'alert' },
+    modify: { state: 'warn' },
   })
   h.call('POST', '/rules', { label: 'accept-fallback', match: { path: '*', vessel: '*' }, target: 'ACCEPT' })
 
-  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'warn' })
-  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'alert')
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
+  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'warn')
   h.cleanup()
 })

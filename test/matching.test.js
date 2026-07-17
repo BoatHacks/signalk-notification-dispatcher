@@ -28,7 +28,7 @@ test('matching: wildcard path pattern', () => {
   h.sendDelta({ mmsi: '111111111', path: 'navigation.anchorDrag', state: 'alarm' })
   assert.equal(h.state.forwarded.length, 0)
 
-  h.sendDelta({ mmsi: '111111111', path: 'safety.securite', state: 'alert' })
+  h.sendDelta({ mmsi: '111111111', path: 'safety.securite', state: 'warn' })
   assert.equal(h.state.forwarded.length, 1)
   h.cleanup()
 })
@@ -47,13 +47,13 @@ test('matching: vessel filter by MMSI only affects that vessel', () => {
 
 test('matching: states filter restricts which notification states trigger the rule', () => {
   const h = createHarness()
-  h.call('POST', '/rules', { match: { path: 'safety.*', vessel: '*', states: ['alert'] }, target: 'DROP' })
-
-  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alert' })
-  assert.equal(h.state.forwarded.length, 0, 'alert state should match and drop')
+  h.call('POST', '/rules', { match: { path: 'safety.*', vessel: '*', states: ['warn'] }, target: 'DROP' })
 
   h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'warn' })
-  assert.equal(h.state.forwarded.length, 1, 'warn state should not match, falls through to ACCEPT')
+  assert.equal(h.state.forwarded.length, 0, 'warn state should match and drop')
+
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alert' })
+  assert.equal(h.state.forwarded.length, 1, 'alert state should not match, falls through to ACCEPT')
   h.cleanup()
 })
 

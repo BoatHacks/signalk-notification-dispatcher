@@ -112,7 +112,7 @@
       "type": "object",
       "properties": {
         "state": {
-          "description": "Overrides the notification's own `state` while forwarding it, e.g. downgrading a recurring securité broadcast from warn to alert instead of dropping it outright. null means no override.",
+          "description": "Overrides the notification's own `state` while forwarding it, e.g. downgrading a recurring securité broadcast from alarm to warn instead of dropping it outright. null means no override.",
           "anyOf": [{ "$ref": "#/$defs/notificationState" }, { "type": "null" }],
           "default": null
         }

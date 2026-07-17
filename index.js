@@ -74,7 +74,7 @@ module.exports = function (app) {
         typeof src.targetPathTemplate === 'string' ? src.targetPathTemplate : DEFAULT_TARGET_PATH_TEMPLATE,
       // Only meaningful when target === 'MODIFY': overrides the notification's
       // own fields while forwarding it. Currently supports overriding `state`
-      // (e.g. downgrading a recurring securité call from warn to alert
+      // (e.g. downgrading a recurring securité call from alarm to warn
       // instead of dropping it outright) - extend here if more fields need
       // to be modifiable later.
       modify: {

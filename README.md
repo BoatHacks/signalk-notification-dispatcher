@@ -37,7 +37,7 @@ Dispatcher). Each rule has:
 | Vessel filter | MMSI, full context string, or `*` for any vessel |
 | States | Which notification states (`nominal`/`normal`/`alert`/`warn`/`alarm`/`emergency`) trigger the rule |
 | Target | `ACCEPT` (forward), `MODIFY` (forward, overriding a field first), or `DROP` (suppress) |
-| Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `warn` to `alert` instead of dropping it outright. |
+| Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright. |
 | Target path template | Only for `ACCEPT`/`MODIFY` rules. `{vessel}` and `{path}` placeholders. Default: `notifications.received.{vessel}.{path}` |
 | Timebox | Optional. Restricts the rule to only match within a tolerance window (in minutes) around one or more UTC anchor times. Entries are semicolon-separated and can be either `HH:MM` (e.g. `02:15; 06:15; 10:15; 14:15; 18:15; 22:15 ±5m` for a coastal station's 4-hourly broadcasts) or, for expert use, a standard 5-field crontab expression (`minute hour dom month dow`, UTC), e.g. `15 2,6,10,14,18,22 * * *` for the same schedule, or `0 8 * * 0` for "every Sunday at 08:00". Disabled by default (rule matches at any time). |
 | Skip while moored / Skip while anchored | Optional, independent toggles (either or both can be on). If the own vessel's `navigation.state` is currently `moored` and "skip while moored" is on (or `anchored` and "skip while anchored" is on), this rule is skipped as if it didn't match — evaluation falls through to the next rule, or to the default policy. |
@@ -82,7 +82,7 @@ Example ruleset:
       "match": {
         "path": "safety.*",
         "vessel": "*",
-        "states": ["alert"],
+        "states": ["warn"],
         "timebox": {
           "enabled": true,
           "times": ["02:15", "06:15", "10:15", "14:15", "18:15", "22:15"],
