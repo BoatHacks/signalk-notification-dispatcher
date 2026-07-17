@@ -141,6 +141,27 @@ workflow](https://github.com/SignalK/signalk-server/blob/master/.github/workflow
 (`.github/workflows/ci.yml`), across Node 22/24 on Linux, Linux arm64, macOS,
 Windows, and armv7 (Cerbo GX-class hardware) under QEMU.
 
+### Dev tools
+
+`scripts/send-alert.sh` injects a `distress`/`urgency`/`safety` notification
+for an arbitrary vessel MMSI into a running SignalK server (via the
+WebSocket delta stream - the same mechanism NMEA/AIS providers use to
+report other vessels' data), so you can exercise this plugin's rules
+without needing a real DSC/AIS distress relay. Requires `npm install` first
+(uses `ws`, a devDependency). One-off by default, or repeated at an
+interval:
+
+```
+scripts/send-alert.sh -c distress -m 211234567
+scripts/send-alert.sh -c urgency -m 211234567 -i 30 -N 5 -M "PAN PAN: vessel adrift"
+scripts/send-alert.sh -c safety -m 224123456 -n notice-to-mariners
+scripts/send-alert.sh -c distress -m 211234567 --clear
+```
+
+Run with `-h`/`--help` for the full option list. The category-to-state
+mapping matches the specification's recommended severity mapping
+(`distress`→`emergency`, `urgency`→`alarm`, `safety`→`warn`).
+
 ## License
 
 MIT
