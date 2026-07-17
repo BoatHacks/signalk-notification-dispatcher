@@ -30,6 +30,7 @@ HOST="localhost"
 PORT="3000"
 USE_SSL=0
 TOKEN=""
+LOGIN_CREDS=""
 CATEGORY=""
 MMSI=""
 MESSAGE=""
@@ -66,6 +67,9 @@ Options:
   -p, --port <port>       SignalK server port (default: 3000)
       --ssl               Use wss:// instead of ws://
   -t, --token <token>     Bearer token, for a security-enabled server
+  -l, --login <user:pass> Log in with this username:password to obtain a
+                          token automatically, instead of passing one with
+                          --token. Ignored if --token is also given.
   -M, --message <text>    Notification message. Defaults to a canned
                           message for the chosen category.
   -n, --nature <nature>   Nest the notification under this nature, e.g.
@@ -95,6 +99,9 @@ Examples:
 
   # Clear a previously-raised distress notification
   send-alert.sh -c distress -m 211234567 --clear
+
+  # Authenticate by logging in instead of passing a pre-generated token
+  send-alert.sh -c distress -m 211234567 -l alerts-bot:hunter2
 USAGE
 }
 
@@ -108,6 +115,7 @@ while [ $# -gt 0 ]; do
     -p|--port) PORT="$2"; shift 2 ;;
     --ssl) USE_SSL=1; shift ;;
     -t|--token) TOKEN="$2"; shift 2 ;;
+    -l|--login) LOGIN_CREDS="$2"; shift 2 ;;
     -M|--message) MESSAGE="$2"; shift 2 ;;
     -n|--nature) NATURE="$2"; shift 2 ;;
     -s|--source) SOURCE_LABEL="$2"; shift 2 ;;
@@ -145,6 +153,17 @@ if [ -n "$COUNT" ] && [ -z "$INTERVAL" ]; then
   exit 1
 fi
 
+LOGIN_USER=""
+LOGIN_PASS=""
+if [ -n "$LOGIN_CREDS" ]; then
+  if [[ "$LOGIN_CREDS" != *:* ]]; then
+    echo "Error: --login expects the form <username>:<password>." >&2
+    exit 1
+  fi
+  LOGIN_USER="${LOGIN_CREDS%%:*}"
+  LOGIN_PASS="${LOGIN_CREDS#*:}"
+fi
+
 # ---- locate the repo root, so `require('ws')` resolves regardless of cwd ----
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -161,6 +180,8 @@ SEND_ALERT_HOST="$HOST" \
 SEND_ALERT_PORT="$PORT" \
 SEND_ALERT_SSL="$USE_SSL" \
 SEND_ALERT_TOKEN="$TOKEN" \
+SEND_ALERT_LOGIN_USER="$LOGIN_USER" \
+SEND_ALERT_LOGIN_PASS="$LOGIN_PASS" \
 SEND_ALERT_CATEGORY="$CATEGORY" \
 SEND_ALERT_MMSI="$MMSI" \
 SEND_ALERT_MESSAGE="$MESSAGE" \
@@ -178,7 +199,9 @@ const {
   SEND_ALERT_HOST: host,
   SEND_ALERT_PORT: port,
   SEND_ALERT_SSL: useSsl,
-  SEND_ALERT_TOKEN: token,
+  SEND_ALERT_TOKEN: tokenArg,
+  SEND_ALERT_LOGIN_USER: loginUser,
+  SEND_ALERT_LOGIN_PASS: loginPass,
   SEND_ALERT_CATEGORY: category,
   SEND_ALERT_MMSI: mmsi,
   SEND_ALERT_MESSAGE: messageArg,
@@ -229,50 +252,89 @@ function buildDelta() {
 }
 
 const protocol = useSsl === '1' ? 'wss' : 'ws'
-const url = `${protocol}://${host}:${port}/signalk/v1/stream?subscribe=none`
-const wsOptions = {}
-if (token) wsOptions.headers = { Authorization: `Bearer ${token}` }
+const httpProtocol = useSsl === '1' ? 'https' : 'http'
 
-const ws = new WebSocket(url, wsOptions)
-let sent = 0
-let timer = null
-
-function describeAndSend() {
-  const delta = buildDelta()
-  ws.send(JSON.stringify(delta))
-  sent += 1
-  const verb = clear ? 'Cleared' : 'Sent'
-  console.log(`${verb} ${category} (${clear ? 'null' : STATE_BY_CATEGORY[category]}) -> vessels.urn:mrn:imo:mmsi:${mmsi}.${path} [${sent}${count === Infinity ? '' : `/${count}`}]`)
-
-  if (sent >= count) {
-    if (timer) clearInterval(timer)
-    ws.close()
+// Logs in with username/password to obtain a bearer token, as an
+// alternative to passing a pre-generated one with --token.
+async function login() {
+  const url = `${httpProtocol}://${host}:${port}/signalk/v1/auth/login`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: loginUser, password: loginPass }),
+  })
+  if (!res.ok) {
+    throw new Error(`login failed: HTTP ${res.status} ${await res.text()}`)
   }
+  const data = await res.json()
+  const token = data.token || (data.validate && data.validate.token)
+  if (!token) throw new Error(`login response had no token: ${JSON.stringify(data)}`)
+  return token
 }
 
-ws.on('open', () => {
-  describeAndSend()
-  if (interval && sent < count) {
-    timer = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) describeAndSend()
-    }, interval)
-  } else {
-    ws.close()
+async function main() {
+  let token = tokenArg
+
+  if (!token && loginUser) {
+    try {
+      token = await login()
+      console.log(`Logged in as ${loginUser}.`)
+    } catch (err) {
+      console.error(`Login error: ${err.message}`)
+      process.exit(1)
+    }
   }
-})
 
-ws.on('error', (err) => {
-  console.error(`WebSocket error: ${err.message}`)
+  const url = `${protocol}://${host}:${port}/signalk/v1/stream?subscribe=none`
+  const wsOptions = {}
+  if (token) wsOptions.headers = { Authorization: `Bearer ${token}` }
+
+  const ws = new WebSocket(url, wsOptions)
+  let sent = 0
+  let timer = null
+
+  function describeAndSend() {
+    const delta = buildDelta()
+    ws.send(JSON.stringify(delta))
+    sent += 1
+    const verb = clear ? 'Cleared' : 'Sent'
+    console.log(`${verb} ${category} (${clear ? 'null' : STATE_BY_CATEGORY[category]}) -> vessels.urn:mrn:imo:mmsi:${mmsi}.${path} [${sent}${count === Infinity ? '' : `/${count}`}]`)
+
+    if (sent >= count) {
+      if (timer) clearInterval(timer)
+      ws.close()
+    }
+  }
+
+  ws.on('open', () => {
+    describeAndSend()
+    if (interval && sent < count) {
+      timer = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) describeAndSend()
+      }, interval)
+    } else {
+      ws.close()
+    }
+  })
+
+  ws.on('error', (err) => {
+    console.error(`WebSocket error: ${err.message}`)
+    process.exit(1)
+  })
+
+  ws.on('close', () => {
+    if (!interval || sent >= count) process.exit(0)
+  })
+
+  process.on('SIGINT', () => {
+    if (timer) clearInterval(timer)
+    ws.close()
+    process.exit(0)
+  })
+}
+
+main().catch((err) => {
+  console.error(`Fatal error: ${err.message}`)
   process.exit(1)
-})
-
-ws.on('close', () => {
-  if (!interval || sent >= count) process.exit(0)
-})
-
-process.on('SIGINT', () => {
-  if (timer) clearInterval(timer)
-  ws.close()
-  process.exit(0)
 })
 NODE_EOF

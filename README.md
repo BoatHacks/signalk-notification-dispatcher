@@ -156,11 +156,18 @@ scripts/send-alert.sh -c distress -m 211234567
 scripts/send-alert.sh -c urgency -m 211234567 -i 30 -N 5 -M "PAN PAN: vessel adrift"
 scripts/send-alert.sh -c safety -m 224123456 -n notice-to-mariners
 scripts/send-alert.sh -c distress -m 211234567 --clear
+scripts/send-alert.sh -c distress -m 211234567 -l alerts-bot:hunter2
 ```
 
 Run with `-h`/`--help` for the full option list. The category-to-state
 mapping matches the specification's recommended severity mapping
 (`distress`→`emergency`, `urgency`→`alarm`, `safety`→`warn`).
+
+For a security-enabled server, authenticate with either `--token <token>`
+(e.g. one minted via SignalK server's `signalk-generate-token` CLI against
+a dedicated user account) or `--login <username>:<password>` to have the
+script log in and obtain a token itself. Neither is needed if the server
+has security disabled.
 
 ## License
 
