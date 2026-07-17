@@ -66,16 +66,46 @@ test('webapp: "Apply ruleset" in the JSON editor actually applies the edited rul
   }
 })
 
-test('webapp: fetch base URL survives a later location change (e.g. a surrounding SPA shell navigating)', async () => {
+test('webapp: requests go to /plugins/<id> even when the webapp itself is served at a completely different path', async () => {
+  // This is the exact bug reported: the webapp (via the signalk-webapp
+  // convention) is served at /signalk-notification-dispatcher/, but the
+  // plugin's REST API (registerWithRouter) is documented to always live at
+  // /plugins/signalk-notification-dispatcher/ - a different path, not just
+  // a trailing-slash variant. The fetch base must not be derived from
+  // wherever this page happens to be hosted.
+  const backend = createHarness()
+  const { doc, findButtonByText, unmount } = await mountWebapp(backend, {
+    url: 'http://signalk-server:3000/signalk-notification-dispatcher/',
+  })
+
+  try {
+    findButtonByText('+ Add rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const labelInput = doc.querySelector('.modal input[type="text"]')
+    labelInput.value = 'wrong base path rule'
+    labelInput.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    findButtonByText('Save rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    assert.equal(backend.call('GET', '/rules').json.length, 1, 'the save should have reached /plugins/<id>/rules')
+    assert.equal(doc.querySelector('.error-banner'), null, 'no error banner should be shown')
+  } finally {
+    unmount()
+    backend.cleanup()
+  }
+})
+
+test('webapp: fetch base URL is unaffected by a later location change (e.g. a surrounding SPA shell navigating)', async () => {
   const backend = createHarness()
   const { doc, findButtonByText, unmount } = await mountWebapp(backend)
 
   try {
     // Simulate something else in the page (e.g. the SignalK admin UI's own
     // client-side router, if this webapp isn't isolated in its own iframe)
-    // changing the URL after our script has already loaded and computed its
-    // fetch base. A base resolved fresh against '.' at call time would break
-    // here; a base frozen once at load time should not.
+    // changing the URL after our script has already loaded. Since BASE is a
+    // fixed absolute path rather than derived from window.location, this
+    // should have no effect at all.
     doc.defaultView.history.pushState({}, '', 'http://localhost/admin/#/somewhere/else')
 
     findButtonByText('+ Add rule').click()
