@@ -25,6 +25,25 @@ The ruleset is modeled like an iptables firewall chain:
   `DROP`, configurable in the webapp toolbar — defaults to `ACCEPT`, i.e.
   permit-all).
 
+### Clearing notifications
+
+Per the Signal K spec, a notification is cleared by sending a `null` value
+for its path, and the receiving server is expected to remove that key from
+the tree entirely — not leave it sitting there with a null value.
+
+The plugin tracks, per source notification, exactly which path it last
+forwarded that notification to. When the source clears it, the clear is
+sent to that *same* path — not a freshly-recomputed one. This matters in
+particular for target path templates using `{uuid}`: without this
+tracking, the clear would generate a brand new random path (since every
+call to the template generates a fresh uuid), so it would never reach the
+originally-forwarded copy, leaving it stuck forever while also creating an
+unrelated, immediately-stray `null`-valued entry. The same tracking also
+means repeated updates to a still-active notification land on the same
+forwarded node instead of spawning a new one on every update; a fresh path
+(and a fresh `{uuid}`, if the template uses one) is only generated for the
+*next* occurrence, after the current one has been cleared.
+
 ## Configuring rules
 
 Open the plugin's webapp (SignalK admin UI → Webapps → Notification

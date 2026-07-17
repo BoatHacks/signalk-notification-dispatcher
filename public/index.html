@@ -58,6 +58,7 @@
   tr:last-child td { border-bottom: none; }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
   .badge.ACCEPT { background: rgba(63,184,127,0.15); color: var(--forward); }
+  .badge.CLEAR { background: rgba(142,160,176,0.2); color: var(--text-dim); }
   .badge.MODIFY { background: rgba(63,166,224,0.15); color: var(--accent); }
   .badge.DROP { background: rgba(217,119,87,0.15); color: var(--suppress); }
   .badge.off { background: rgba(142,160,176,0.15); color: var(--text-dim); }
@@ -467,7 +468,7 @@ function App() {
           <summary>Recent activity (${activity.length})</summary>
           ${activity.length === 0 ? html`<div class="empty">Nothing accepted or dropped yet.</div>` : activity.map((a) => html`
             <div class="activity-item">
-              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : 'DROP'}">${a.action}</span>
+              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : a.action === 'clear' ? 'CLEAR' : 'DROP'}">${a.action}</span>
               <span class="path">${a.sourcePath}</span>
               ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
               <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>

@@ -11,6 +11,17 @@ module.exports = function (app) {
   let activityLog = []
   let rulesetFilePath = null
 
+  // Tracks, per source notification (keyed by "<context>|<subPath>"), the
+  // exact target path it was last forwarded/modified to. This is what lets
+  // a later clear (value === null) land on the SAME node instead of a
+  // freshly re-templated one - which matters whenever targetPathTemplate
+  // contains {uuid}, since re-templating generates a brand new random path
+  // every call. Without this, a clear would never reach the originally
+  // forwarded copy (leaving it stuck forever) while also creating an
+  // unrelated, immediately-stray null-valued entry at a new path. Entries
+  // are removed once the source notification is cleared.
+  let forwardedTargetPaths = new Map()
+
   // The ruleset mirrors an iptables-style firewall chain:
   //   - `policy` is the default target (ACCEPT|DROP) applied when no rule matches
   //   - `rules` is an ordered list, evaluated top to bottom, first match wins
@@ -331,6 +342,35 @@ module.exports = function (app) {
       ;(update.values || []).forEach(({ path: valuePath, value }) => {
         if (!valuePath || !valuePath.startsWith('notifications.')) return
         const subPath = valuePath.slice('notifications.'.length)
+        const trackingKey = `${context}|${subPath}`
+
+        if (value === null) {
+          // The source notification was cleared. Per the Signal K spec,
+          // clearing means the key is removed from the tree entirely, not
+          // left sitting there with a null value - so this must land on
+          // whatever path we actually forwarded the live notification to,
+          // not a freshly re-templated one (which could differ, e.g. with
+          // {uuid} in the template).
+          const trackedPath = forwardedTargetPaths.get(trackingKey)
+          if (trackedPath) {
+            app.handleMessage(plugin.id, {
+              updates: [{ values: [{ path: trackedPath, value: null }] }],
+            })
+            forwardedTargetPaths.delete(trackingKey)
+            logActivity({
+              action: 'clear',
+              rule: 'source cleared',
+              sourcePath: valuePath,
+              targetPath: trackedPath,
+              vessel: vesselLabel,
+              state: 'cleared',
+            })
+          }
+          // Nothing was ever forwarded for this notification (e.g. it was
+          // always DROPped) - nothing to clear.
+          return
+        }
+
         const state = value && value.state ? value.state : 'normal'
 
         const matchInfo = { subPath, context, vesselLabel, state, timestamp, ownNavState }
@@ -359,7 +399,17 @@ module.exports = function (app) {
         const isModify = effectiveRule.target === 'MODIFY' && effectiveRule.modify && effectiveRule.modify.state
         const outValue = isModify ? { ...value, state: effectiveRule.modify.state } : value
 
-        const targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel })
+        // Reuse the path this same (still-active) source notification was
+        // last forwarded to, if any, rather than re-templating one on every
+        // update - otherwise a template using {uuid} would spawn a brand
+        // new node on every re-raise instead of updating the existing one,
+        // and would make clearing it (above) impossible to target correctly.
+        let targetPath = forwardedTargetPaths.get(trackingKey)
+        if (!targetPath) {
+          targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel })
+          forwardedTargetPaths.set(trackingKey, targetPath)
+        }
+
         app.handleMessage(plugin.id, {
           updates: [
             {
