@@ -75,6 +75,22 @@ test('rest-api: PUT /rules rejects a non-array body', () => {
   h.cleanup()
 })
 
+test('rest-api: every response sets Cache-Control: no-store', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', { label: 'r' })
+  const endpoints = [
+    ['GET', '/ruleset'],
+    ['GET', '/rules'],
+    ['GET', '/policy'],
+    ['GET', '/activity'],
+  ]
+  for (const [method, path] of endpoints) {
+    const res = h.call(method, path)
+    assert.equal(res.headers['Cache-Control'], 'no-store', `${method} ${path} should be uncacheable`)
+  }
+  h.cleanup()
+})
+
 test('rest-api: GET /activity reflects accept/drop decisions', () => {
   const h = createHarness()
   h.call('POST', '/rules', { label: 'blocker', match: { path: 'urgency.*', vessel: '*' }, target: 'DROP' })

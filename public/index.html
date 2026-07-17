@@ -311,8 +311,8 @@ function App() {
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef(null)
 
-  const loadRuleset = () => fetch(`${BASE}/ruleset`).then((r) => r.json()).then(setRuleset)
-  const loadActivity = () => fetch(`${BASE}/activity`).then((r) => r.json()).then(setActivity)
+  const loadRuleset = () => fetch(`${BASE}/ruleset`, { cache: 'no-store' }).then((r) => r.json()).then(setRuleset)
+  const loadActivity = () => fetch(`${BASE}/activity`, { cache: 'no-store' }).then((r) => r.json()).then(setActivity)
 
   useEffect(() => {
     Promise.all([loadRuleset(), loadActivity()]).finally(() => setLoading(false))
@@ -323,14 +323,14 @@ function App() {
   const saveRule = (rule) => {
     const isNew = !rule.id
     const req = isNew
-      ? fetch(`${BASE}/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) })
-      : fetch(`${BASE}/rules/${rule.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule) })
+      ? fetch(`${BASE}/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule), cache: 'no-store' })
+      : fetch(`${BASE}/rules/${rule.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule), cache: 'no-store' })
     req.then(() => { setEditing(null); loadRuleset() })
   }
 
   const deleteRule = (rule) => {
     if (!confirm(`Delete rule "${rule.label || rule.match.path}"?`)) return
-    fetch(`${BASE}/rules/${rule.id}`, { method: 'DELETE' }).then(loadRuleset)
+    fetch(`${BASE}/rules/${rule.id}`, { method: 'DELETE', cache: 'no-store' }).then(loadRuleset)
   }
 
   const toggleEnabled = (rule) => {
@@ -338,6 +338,7 @@ function App() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: !rule.enabled }),
+      cache: 'no-store',
     }).then(loadRuleset)
   }
 
@@ -346,6 +347,7 @@ function App() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ policy }),
+      cache: 'no-store',
     }).then(loadRuleset)
   }
 
@@ -354,6 +356,7 @@ function App() {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(parsed),
+      cache: 'no-store',
     }).then((r) => r.json()).then(setRuleset)
   }
 

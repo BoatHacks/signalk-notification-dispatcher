@@ -461,6 +461,16 @@ module.exports = function (app) {
   // ---- REST API for the rule-builder webapp --------------------------------
 
   plugin.registerWithRouter = function (router) {
+    // Every response here reflects live, frequently-mutated state (the
+    // ruleset and the activity log) - never let a client or intermediary
+    // cache a GET and serve it back stale after a POST/PUT/DELETE.
+    if (typeof router.use === 'function') {
+      router.use((req, res, next) => {
+        res.set('Cache-Control', 'no-store')
+        next()
+      })
+    }
+
     // Whole-ruleset endpoints: used by the JSON editor and import/export.
     router.get('/ruleset', (req, res) => {
       res.json(ruleset)
