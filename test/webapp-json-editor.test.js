@@ -66,6 +66,64 @@ test('webapp: "Apply ruleset" in the JSON editor actually applies the edited rul
   }
 })
 
+test('webapp: fetch base URL survives a later location change (e.g. a surrounding SPA shell navigating)', async () => {
+  const backend = createHarness()
+  const { doc, findButtonByText, unmount } = await mountWebapp(backend)
+
+  try {
+    // Simulate something else in the page (e.g. the SignalK admin UI's own
+    // client-side router, if this webapp isn't isolated in its own iframe)
+    // changing the URL after our script has already loaded and computed its
+    // fetch base. A base resolved fresh against '.' at call time would break
+    // here; a base frozen once at load time should not.
+    doc.defaultView.history.pushState({}, '', 'http://localhost/admin/#/somewhere/else')
+
+    findButtonByText('+ Add rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    const labelInput = doc.querySelector('.modal input[type="text"]')
+    labelInput.value = 'post-navigation rule'
+    labelInput.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    findButtonByText('Save rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    assert.equal(backend.call('GET', '/rules').json.length, 1, 'the save should still have reached the backend')
+    assert.equal(doc.querySelector('.error-banner'), null, 'no error banner should be shown')
+  } finally {
+    unmount()
+    backend.cleanup()
+  }
+})
+
+test('webapp: a failed request shows a visible error instead of failing silently', async () => {
+  const backend = createHarness()
+  const { doc, unmount } = await mountWebapp(backend)
+
+  try {
+    // Simulate the exact failure mode this bug report was tracing: fetch()
+    // resolving to a 404 (e.g. from a wrong base URL) rather than throwing.
+    const realFetch = globalThis.fetch
+    globalThis.fetch = async (url, opts) => {
+      if (opts && opts.method === 'PUT' && String(url).endsWith('/policy')) {
+        return { ok: false, status: 404, url: String(url), json: async () => ({}) }
+      }
+      return realFetch(url, opts)
+    }
+
+    const policySelect = doc.querySelector('.policy-control select')
+    policySelect.value = 'DROP'
+    policySelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 200))
+
+    const banner = doc.querySelector('.error-banner')
+    assert.ok(banner, 'a failed request should show a visible error banner, not fail silently')
+    assert.match(banner.textContent, /404/)
+  } finally {
+    unmount()
+    backend.cleanup()
+  }
+})
+
 test('webapp: "Validate" in the JSON editor reports errors without applying anything', async () => {
   const backend = createHarness()
   const { doc, findButtonByText, unmount } = await mountWebapp(backend)

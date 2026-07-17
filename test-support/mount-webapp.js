@@ -19,16 +19,14 @@ function extractModuleScript(html) {
 //
 // Returns { doc, findButtonByText, unmount() }. Always call unmount() in a
 // finally block to restore globals and remove the temp script file.
-async function mountWebapp(backend) {
+async function mountWebapp(backend, { url = 'http://localhost/plugins/signalk-notification-dispatcher/' } = {}) {
   const html = fs.readFileSync(INDEX_HTML, 'utf8')
   const script = extractModuleScript(html)
 
   const tmpScriptPath = path.join(PUBLIC_DIR, `.webapp-interactive-test-${process.pid}-${Date.now()}.mjs`)
   fs.writeFileSync(tmpScriptPath, script)
 
-  const dom = new JSDOM('<!DOCTYPE html><div id="app"></div>', {
-    url: 'http://localhost/plugins/signalk-notification-dispatcher/',
-  })
+  const dom = new JSDOM('<!DOCTYPE html><div id="app"></div>', { url })
 
   const previous = {
     window: globalThis.window,

@@ -86,6 +86,11 @@
   .checkbox-grid label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); margin: 0; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
   .empty { color: var(--text-dim); padding: 30px; text-align: center; }
+  .error-banner {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    background: rgba(224,86,86,0.12); border: 1px solid rgba(224,86,86,0.4); color: var(--danger);
+    border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px;
+  }
   details { margin-top: 16px; background: var(--panel); border-radius: 8px; border: 1px solid var(--border); }
   summary { padding: 10px 12px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
   .activity-item { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; display: flex; gap: 8px; align-items: baseline; }
@@ -107,7 +112,15 @@
 <script type="module">
 import { render, html, useState, useEffect, useRef } from './vendor/htm-preact-standalone.module.js'
 
-const BASE = '.'
+// A bare '.' resolves relative fetches against whatever the CURRENT page
+// URL happens to be at call time - which silently breaks if the page was
+// loaded without a trailing slash (new URL('./ruleset', '.../plugin-id')
+// resolves to '.../ruleset', dropping the plugin id entirely) or if
+// something later changes the page's URL/history. Freezing a normalized,
+// absolute base directory once here, up front, avoids both failure modes:
+// new URL('.', href) always resolves to "the directory containing this
+// document" correctly regardless of a trailing slash.
+const BASE = new URL('.', window.location.href).href.replace(/\/$/, '')
 const ALL_STATES = ['nominal', 'normal', 'alert', 'warn', 'alarm', 'emergency']
 // Recommended ITU priority category per state, per the Signal K specification's
 // distress/urgency/safety well-known names (distress->emergency, urgency->alarm,
@@ -309,14 +322,28 @@ function App() {
   const [activity, setActivity] = useState([])
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [requestError, setRequestError] = useState(null)
   const fileInputRef = useRef(null)
 
-  const loadRuleset = () => fetch(`${BASE}/ruleset`, { cache: 'no-store' }).then((r) => r.json()).then(setRuleset)
-  const loadActivity = () => fetch(`${BASE}/activity`, { cache: 'no-store' }).then((r) => r.json()).then(setActivity)
+  // Every fetch() here goes through this: fetch() only rejects on a
+  // network-level failure, NOT on an HTTP error status (a 404 from a wrong
+  // URL resolves normally with ok:false) - without this check, a request
+  // that silently failed would just as silently do nothing.
+  function checkOk(res) {
+    if (!res.ok) throw new Error(`Request to ${res.url} failed: HTTP ${res.status}`)
+    return res
+  }
+
+  const loadRuleset = () =>
+    fetch(`${BASE}/ruleset`, { cache: 'no-store' }).then(checkOk).then((r) => r.json()).then(setRuleset)
+  const loadActivity = () =>
+    fetch(`${BASE}/activity`, { cache: 'no-store' }).then(checkOk).then((r) => r.json()).then(setActivity)
 
   useEffect(() => {
-    Promise.all([loadRuleset(), loadActivity()]).finally(() => setLoading(false))
-    const t = setInterval(loadActivity, 5000)
+    Promise.all([loadRuleset(), loadActivity()])
+      .catch((err) => setRequestError(err.message))
+      .finally(() => setLoading(false))
+    const t = setInterval(() => loadActivity().catch((err) => setRequestError(err.message)), 5000)
     return () => clearInterval(t)
   }, [])
 
@@ -325,12 +352,18 @@ function App() {
     const req = isNew
       ? fetch(`${BASE}/rules`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule), cache: 'no-store' })
       : fetch(`${BASE}/rules/${rule.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rule), cache: 'no-store' })
-    req.then(() => { setEditing(null); loadRuleset() })
+    req
+      .then(checkOk)
+      .then(() => { setRequestError(null); setEditing(null); return loadRuleset() })
+      .catch((err) => setRequestError(err.message))
   }
 
   const deleteRule = (rule) => {
     if (!confirm(`Delete rule "${rule.label || rule.match.path}"?`)) return
-    fetch(`${BASE}/rules/${rule.id}`, { method: 'DELETE', cache: 'no-store' }).then(loadRuleset)
+    fetch(`${BASE}/rules/${rule.id}`, { method: 'DELETE', cache: 'no-store' })
+      .then(checkOk)
+      .then(() => { setRequestError(null); return loadRuleset() })
+      .catch((err) => setRequestError(err.message))
   }
 
   const toggleEnabled = (rule) => {
@@ -339,7 +372,10 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: !rule.enabled }),
       cache: 'no-store',
-    }).then(loadRuleset)
+    })
+      .then(checkOk)
+      .then(() => { setRequestError(null); return loadRuleset() })
+      .catch((err) => setRequestError(err.message))
   }
 
   const setPolicy = (policy) => {
@@ -348,7 +384,10 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ policy }),
       cache: 'no-store',
-    }).then(loadRuleset)
+    })
+      .then(checkOk)
+      .then(() => { setRequestError(null); return loadRuleset() })
+      .catch((err) => setRequestError(err.message))
   }
 
   const applyRuleset = (parsed) => {
@@ -357,7 +396,11 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(parsed),
       cache: 'no-store',
-    }).then((r) => r.json()).then(setRuleset)
+    })
+      .then(checkOk)
+      .then((r) => r.json())
+      .then((updated) => { setRequestError(null); setRuleset(updated) })
+      .catch((err) => setRequestError(err.message))
   }
 
   const exportRuleset = () => {
@@ -411,6 +454,13 @@ function App() {
             <button onClick=${() => setEditing(emptyRule())}>+ Add rule</button>
           </div>
         </div>
+
+        ${requestError && html`
+          <div class="error-banner">
+            <span>${requestError}</span>
+            <button class="secondary" onClick=${() => setRequestError(null)}>Dismiss</button>
+          </div>
+        `}
 
         ${loading ? html`<div class="empty">Loading…</div>` : rules.length === 0 ? html`
           <div class="empty">No rules yet. The default policy (<strong>${ruleset.policy}</strong>) applies to every notification.</div>
