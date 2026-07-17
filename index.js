@@ -1,5 +1,6 @@
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 
 const ALL_STATES = ['nominal', 'normal', 'alert', 'warn', 'alarm', 'emergency']
 const MAX_ACTIVITY_LOG = 200
@@ -309,7 +310,10 @@ module.exports = function (app) {
 
   function buildTargetPath(rule, { subPath, vesselLabel }) {
     const template = rule.targetPathTemplate || DEFAULT_TARGET_PATH_TEMPLATE
-    return template.replaceAll('{vessel}', vesselLabel).replaceAll('{path}', subPath)
+    return template
+      .replaceAll('{vessel}', vesselLabel)
+      .replaceAll('{path}', subPath)
+      .replaceAll('{uuid}', () => crypto.randomUUID())
   }
 
   // ---- delta handling ------------------------------------------------------

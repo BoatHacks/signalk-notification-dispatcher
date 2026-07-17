@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+- Rule editor: the "Notification states to match" checkboxes now show the matching ITU priority category next to `emergency` (distress), `alarm` (urgency), and `warn` (safety)
+- Target path template now supports a `{uuid}` placeholder (alongside `{vessel}`/`{path}`), replaced with a freshly-generated random UUID per occurrence at forward time - useful for disambiguating concurrent notifications; the rule editor has a "+ {uuid}" button to insert it
 - **Fixed: webapp showed a blank page with no internet access.** The webapp loaded Preact and htm from `unpkg.com` at runtime; since ES module imports all resolve before any code runs, one unreachable CDN import silently aborted the entire script - on a boat, whose browser very often only has access to the local SignalK server, this meant the webapp never rendered at all, with no visible error. Preact/htm are now vendored as a single self-contained file under `public/vendor/` (see `public/vendor/README.md`), so the webapp works fully offline. Added `test/webapp.test.js`, which actually executes the webapp's script against a `jsdom` document and confirms it renders, plus checks that no import is a CDN URL - this class of failure won't get merged again silently
 - Exported the ruleset/rule shape as a formal JSON Schema (draft 2020-12) at `docs/rules-schema.json`, useful for validating a hand-edited ruleset before import or for editor autocomplete; added `test/schema.test.js` (using `ajv` as a devDependency) to keep it honest against real plugin output
 - New `MODIFY` rule target: forwards a notification like `ACCEPT`, but first overrides its `state` (e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright)
