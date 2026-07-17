@@ -105,9 +105,12 @@ npm install
 ```
 
 The plugin has no runtime dependencies beyond Node's built-ins (the test
-suite has one devDependency, `ajv`, used only to validate rulesets against
-`docs/rules-schema.json` in tests - it's never required by the plugin
-itself). The ruleset
+suite has devDependencies - `ajv` to validate rulesets against
+`docs/rules-schema.json`, `jsdom` to smoke-test the webapp - neither is ever
+required by the plugin itself). The webapp's own dependencies (Preact and
+htm) are vendored as a static file under `public/vendor/` rather than
+loaded from a CDN, so the webapp works with no internet access - see
+`public/vendor/README.md` for why and how to update them. The ruleset
 is persisted as JSON under the plugin's SignalK data directory
 (`ruleset.json`), not in the plugin's own config schema, since it's managed
 entirely through the webapp. A one-time migration runs automatically if an
@@ -120,11 +123,15 @@ older `rules.json` (pre-iptables-style, flat rule array) is found and no
 npm test
 ```
 
-Runs the test suite with Node's built-in test runner (`node --test`, no
-extra devDependencies). Tests live in `test/` and cover rule matching
-(path/vessel/state/order), the default policy, timebox conditions (both
-`HH:MM` and crontab expert-mode entries), vessel-state gating, the `/rules`
-and `/ruleset` REST endpoints, and the legacy `rules.json` migration. Shared
+Runs the test suite with Node's built-in test runner (`node --test`).
+Tests live in `test/` and cover rule matching (path/vessel/state/order),
+the default policy, timebox conditions (both `HH:MM` and crontab
+expert-mode entries), vessel-state gating, the `MODIFY` target, the
+`/rules` and `/ruleset` REST endpoints, the legacy `rules.json` migration,
+and a webapp smoke test (`test/webapp.test.js`) that actually executes the
+webapp's real script against a `jsdom` document and confirms it renders -
+this is what catches things like an unreachable CDN import silently
+producing a blank page. Shared
 test helpers (a fake SignalK `app`, a router-call shim) live in
 `test-support/`, deliberately outside `test/` so Node's default test-file
 discovery doesn't try to run them as tests themselves.
