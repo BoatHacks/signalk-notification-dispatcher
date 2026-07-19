@@ -93,3 +93,68 @@ test('webapp: toggling "also forward" for an ACTION rule shows the target path t
     backend.cleanup()
   }
 })
+
+test('webapp: selecting rest mode shows the HTTP method field and relabels path/value, and saves correctly', async () => {
+  const backend = createHarness()
+  const { doc, findButtonByText, unmount } = await mountWebapp(backend)
+
+  try {
+    findButtonByText('+ Add rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const selects = () => [...doc.querySelectorAll('.modal select')]
+    const targetSelect = selects()[0]
+    targetSelect.value = 'ACTION'
+    targetSelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    // Second select in the modal is now "Write mode".
+    const modeSelect = selects()[1]
+    modeSelect.value = 'rest'
+    modeSelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const labelTexts = () => [...doc.querySelectorAll('.modal label')].map((l) => l.textContent)
+    assert.ok(labelTexts().some((t) => t.includes('HTTP method')), 'HTTP method field should appear for rest mode')
+    assert.ok(labelTexts().some((t) => t.includes('URL to call')), 'path field should be relabeled to URL to call')
+    assert.ok(
+      labelTexts().some((t) => t.includes('Request body')),
+      'value field should be relabeled to Request body'
+    )
+    assert.equal(
+      doc.querySelector('input[list="known-paths-datalist"]'),
+      null,
+      'the Signal K path datalist should not be shown for rest mode'
+    )
+
+    // Third select is now "HTTP method" (after Target and Write mode).
+    const methodSelect = selects()[2]
+    methodSelect.value = 'POST'
+    methodSelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    const textInputs = [...doc.querySelectorAll('.modal input[type="text"]')]
+    const urlInput = textInputs.find((el) => el.getAttribute('placeholder') === 'https://example.com/hook/{path}')
+    const bodyInput = textInputs.find((el) => (el.getAttribute('placeholder') || '').includes('{state}'))
+    assert.ok(urlInput && bodyInput)
+
+    urlInput.value = 'http://127.0.0.1:9/webhook'
+    urlInput.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    bodyInput.value = '{"state":"{state}"}'
+    bodyInput.dispatchEvent(new doc.defaultView.Event('input', { bubbles: true }))
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    findButtonByText('Save rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const saved = backend.call('GET', '/rules').json[0]
+    assert.equal(saved.action.mode, 'rest')
+    assert.equal(saved.action.method, 'POST')
+    assert.equal(saved.action.path, 'http://127.0.0.1:9/webhook')
+    assert.equal(saved.action.value, '{"state":"{state}"}')
+  } finally {
+    unmount()
+    backend.cleanup()
+  }
+})

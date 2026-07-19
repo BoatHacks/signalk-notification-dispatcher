@@ -127,24 +127,30 @@
     },
 
     "action": {
-      "description": "Only meaningful when the rule's target is ACTION: writes a value to an arbitrary Signal K path as a side effect, independent of whether the notification itself gets forwarded (see `forward`).",
+      "description": "Only meaningful when the rule's target is ACTION: writes a value to an arbitrary Signal K path, or calls an arbitrary URL, as a side effect - independent of whether the notification itself gets forwarded (see `forward`).",
       "type": "object",
       "properties": {
         "mode": {
-          "description": "How the write happens. 'delta' merges the value into the data model, the same mechanism ACCEPT/MODIFY use to forward - works for any path, but isn't a real command. 'put' issues an actual PUT request against the own vessel - only works for paths with a registered put handler (e.g. switches), but is a real actuation.",
+          "description": "How the write happens. 'delta' merges the value into the data model, the same mechanism ACCEPT/MODIFY use to forward - works for any Signal K path, but isn't a real command. 'put' issues an actual PUT request against the own vessel - only works for paths with a registered put handler (e.g. switches), but is a real actuation. 'rest' calls an arbitrary URL over HTTP - not scoped to Signal K at all, for calling out to other services (e.g. a Node-RED flow or Home Assistant webhook); see `method`.",
           "type": "string",
-          "enum": ["delta", "put"],
+          "enum": ["delta", "put", "rest"],
           "default": "delta"
         },
         "path": {
-          "description": "Target Signal K path to write to (own vessel). Plain text; may contain {ref} placeholders - see `value`.",
+          "description": "Target Signal K path to write to (own vessel), for 'delta'/'put' mode - or the full URL to call, for 'rest' mode. Plain text; may contain {ref} placeholders - see `value`.",
           "type": "string",
           "default": ""
         },
         "value": {
-          "description": "Value to write, as plain text. May contain {ref} placeholders: {vessel}/{path}/{uuid} as usual, or a dot-path into the triggering notification's own value object (e.g. {state}, {status.isAcknowledged}). A template that's entirely a single placeholder resolves to that reference's own type (boolean/number/object/etc.); otherwise placeholders are stringified into the surrounding text. After placeholder resolution, a string result gets one extra JSON.parse pass as type coercion - \"true\"/\"42\"/'{\"a\":1}' become their real types, anything not valid JSON (e.g. \"on\") stays a plain string.",
+          "description": "Value to write ('delta'/'put' mode), or the request body sent for PUT/POST ('rest' mode, ignored for GET) - as plain text. May contain {ref} placeholders: {vessel}/{path}/{uuid} as usual, or a dot-path into the triggering notification's own value object (e.g. {state}, {status.isAcknowledged}). A template that's entirely a single placeholder resolves to that reference's own type (boolean/number/object/etc.); otherwise placeholders are stringified into the surrounding text. After placeholder resolution, a string result gets one extra JSON.parse pass as type coercion - \"true\"/\"42\"/'{\"a\":1}' become their real types, anything not valid JSON (e.g. \"on\") stays a plain string.",
           "type": "string",
           "default": ""
+        },
+        "method": {
+          "description": "HTTP method used when mode is 'rest'. Ignored for 'delta'/'put'.",
+          "type": "string",
+          "enum": ["GET", "PUT", "POST"],
+          "default": "GET"
         },
         "forward": {
           "description": "Whether to also forward the notification via the normal targetPathTemplate mechanism, same as ACCEPT would (with the same {uuid}-per-instance path reuse and clear-tracking).",
@@ -152,7 +158,7 @@
           "default": false
         }
       },
-      "required": ["mode", "path", "value", "forward"],
+      "required": ["mode", "path", "value", "method", "forward"],
       "additionalProperties": false
     },
 

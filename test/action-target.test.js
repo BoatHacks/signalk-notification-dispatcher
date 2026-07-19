@@ -192,7 +192,7 @@ test('action: activity log entry includes actionMode/actionPath/actionValue', ()
 test('action: sanitizeRule defaults on a freshly created ACTION rule', () => {
   const h = createHarness()
   const created = h.call('POST', '/rules', { target: 'ACTION' }).json
-  assert.deepEqual(created.action, { mode: 'delta', path: '', value: '', forward: false })
+  assert.deepEqual(created.action, { mode: 'delta', path: '', value: '', method: 'GET', forward: false })
   h.cleanup()
 })
 

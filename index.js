@@ -107,21 +107,26 @@ module.exports = function (app) {
         state: ALL_STATES.includes(src.modify && src.modify.state) ? src.modify.state : null,
       },
       // Only meaningful when target === 'ACTION': writes a value to an
-      // arbitrary Signal K path as a side effect, independent of whether the
-      // notification itself gets forwarded. `path` and `value` are plain
-      // text and may contain {ref} placeholders - {vessel}/{path}/{uuid} as
-      // usual, or a dot-path into the triggering notification's own value
-      // (e.g. {state}, {status.isAcknowledged}). `mode` picks how the write
-      // happens: 'delta' merges it into the data model like ACCEPT/MODIFY
-      // do (works for any path, but isn't a real command); 'put' issues an
-      // actual PUT request (only works for paths with a registered put
-      // handler, e.g. switches, but is a real actuation). `forward`
-      // optionally also forwards the notification via the normal
-      // targetPathTemplate mechanism, same as ACCEPT would.
+      // arbitrary Signal K path (or calls an arbitrary URL) as a side
+      // effect, independent of whether the notification itself gets
+      // forwarded. `path` and `value` are plain text and may contain {ref}
+      // placeholders - {vessel}/{path}/{uuid} as usual, or a dot-path into
+      // the triggering notification's own value (e.g. {state},
+      // {status.isAcknowledged}). `mode` picks how the write happens:
+      // 'delta' merges it into the data model like ACCEPT/MODIFY do (works
+      // for any Signal K path, but isn't a real command); 'put' issues an
+      // actual PUT request against the own vessel (only works for paths
+      // with a registered put handler, e.g. switches, but is a real
+      // actuation); 'rest' calls an arbitrary URL over HTTP (`path` is the
+      // URL, `method` the HTTP method, `value` the request body for
+      // PUT/POST) - not scoped to Signal K at all, for calling out to other
+      // services. `forward` optionally also forwards the notification via
+      // the normal targetPathTemplate mechanism, same as ACCEPT would.
       action: {
-        mode: src.action && src.action.mode === 'put' ? 'put' : 'delta',
+        mode: ['put', 'rest'].includes(src.action && src.action.mode) ? src.action.mode : 'delta',
         path: typeof (src.action && src.action.path) === 'string' ? src.action.path : '',
         value: typeof (src.action && src.action.value) === 'string' ? src.action.value : '',
+        method: ['GET', 'PUT', 'POST'].includes(src.action && src.action.method) ? src.action.method : 'GET',
         forward: !!(src.action && src.action.forward),
       },
     }
@@ -409,6 +414,50 @@ module.exports = function (app) {
     return resolveTemplateString(template, { subPath, vesselLabel, notificationValue: value || null })
   }
 
+  // Performs an ACTION rule's configured write. Resolves action.path/value
+  // against templateCtx first, then dispatches by mode:
+  //   - 'delta': merges the value into the data model (app.handleMessage) -
+  //     works for any path, synchronous, effectively can't fail.
+  //   - 'put': a real PUT request against the own vessel (app.putSelfPath) -
+  //     only paths with a registered put handler, async.
+  //   - 'rest': an HTTP request to an arbitrary URL (action.path is the URL,
+  //     action.method the HTTP method, action.value the request body for
+  //     PUT/POST). Not scoped to Signal K at all - for calling out to other
+  //     services (a Node-RED flow, a Home Assistant webhook, etc). Async,
+  //     10s timeout, response body is not used for anything.
+  // Returns null if action.path is empty (nothing to do), otherwise
+  // { resolvedPath, resolvedValue, promise }, where `promise` is null for
+  // the synchronous 'delta' mode and a Promise (which the caller should
+  // attach failure handling to) for 'put'/'rest'.
+  function performAction(action, templateCtx) {
+    if (!action || !action.path) return null
+
+    const resolvedPath = resolveTemplateString(action.path, templateCtx)
+    const resolvedValue = resolveActionValue(action.value, templateCtx)
+
+    if (action.mode === 'put') {
+      return { resolvedPath, resolvedValue, promise: app.putSelfPath(resolvedPath, resolvedValue, () => {}) }
+    }
+
+    if (action.mode === 'rest') {
+      const method = ['GET', 'PUT', 'POST'].includes(action.method) ? action.method : 'GET'
+      const fetchOptions = { method, signal: AbortSignal.timeout(10000) }
+      if (method !== 'GET' && action.value) {
+        fetchOptions.headers = { 'Content-Type': 'application/json' }
+        fetchOptions.body = typeof resolvedValue === 'string' ? resolvedValue : JSON.stringify(resolvedValue)
+      }
+      const promise = fetch(resolvedPath, fetchOptions).then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res
+      })
+      return { resolvedPath, resolvedValue, promise }
+    }
+
+    // 'delta' (default)
+    app.handleMessage(plugin.id, { updates: [{ values: [{ path: resolvedPath, value: resolvedValue }] }] })
+    return { resolvedPath, resolvedValue, promise: null }
+  }
+
   // ---- delta handling ------------------------------------------------------
 
   function handleDelta(delta) {
@@ -481,33 +530,23 @@ module.exports = function (app) {
         if (effectiveRule.target === 'ACTION') {
           const templateCtx = { subPath, vesselLabel, notificationValue: value }
           const action = effectiveRule.action || {}
-          let actionPath = null
-          let actionValue = undefined
+          const result = performAction(action, templateCtx)
 
-          if (action.path) {
-            actionPath = resolveTemplateString(action.path, templateCtx)
-            actionValue = resolveActionValue(action.value, templateCtx)
-
-            if (action.mode === 'put') {
-              app.putSelfPath(actionPath, actionValue, () => {}).catch((err) => {
-                app.error(`ACTION put failed for ${actionPath}: ${err.message}`)
-                logActivity({
-                  action: 'action-error',
-                  rule: effectiveRule.label || effectiveRule.id,
-                  sourcePath: valuePath,
-                  vessel: vesselLabel,
-                  state,
-                  actionMode: 'put',
-                  actionPath,
-                  actionValue,
-                  error: err.message,
-                })
+          if (result && result.promise) {
+            result.promise.catch((err) => {
+              app.error(`ACTION ${action.mode} failed for ${result.resolvedPath}: ${err.message}`)
+              logActivity({
+                action: 'action-error',
+                rule: effectiveRule.label || effectiveRule.id,
+                sourcePath: valuePath,
+                vessel: vesselLabel,
+                state,
+                actionMode: action.mode,
+                actionPath: result.resolvedPath,
+                actionValue: result.resolvedValue,
+                error: err.message,
               })
-            } else {
-              app.handleMessage(plugin.id, {
-                updates: [{ values: [{ path: actionPath, value: actionValue }] }],
-              })
-            }
+            })
           }
 
           let targetPath = null
@@ -530,8 +569,8 @@ module.exports = function (app) {
             vessel: vesselLabel,
             state,
             actionMode: action.mode,
-            actionPath: actionPath || undefined,
-            actionValue: actionPath ? actionValue : undefined,
+            actionPath: result ? result.resolvedPath : undefined,
+            actionValue: result ? result.resolvedValue : undefined,
           })
           return
         }

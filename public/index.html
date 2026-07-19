@@ -149,7 +149,7 @@ function emptyRule() {
     target: 'ACCEPT',
     targetPathTemplate: 'notifications.received.{path}.dsc-{uuid}',
     modify: { state: null },
-    action: { mode: 'delta', path: '', value: '', forward: false },
+    action: { mode: 'delta', path: '', value: '', method: 'GET', forward: false },
   }
 }
 
@@ -243,21 +243,37 @@ function RuleModal({ rule, onSave, onClose, knownPaths }) {
           <div class="field">
             <label>Write mode</label>
             <select value=${action.mode} onChange=${(e) => setAction({ mode: e.target.value })}>
-              <option value="delta">Update the data tree (works for any path, not a real command)</option>
+              <option value="delta">Update the data tree (works for any Signal K path, not a real command)</option>
               <option value="put">Send a PUT request (real actuation - only paths with a put handler, e.g. switches)</option>
+              <option value="rest">Call a URL over HTTP (not scoped to Signal K - webhooks, other services)</option>
             </select>
           </div>
 
+          ${action.mode === 'rest' && html`
+            <div class="field">
+              <label>HTTP method</label>
+              <select value=${action.method} onChange=${(e) => setAction({ method: e.target.value })}>
+                <option value="GET">GET</option>
+                <option value="POST">POST</option>
+                <option value="PUT">PUT</option>
+              </select>
+            </div>
+          `}
+
           <div class="field">
-            <label>Path to write to</label>
-            <input type="text" list="known-paths-datalist" value=${action.path} onInput=${(e) => setAction({ path: e.target.value })} placeholder="electrical.switches.anchorLight.state" />
-            <datalist id="known-paths-datalist">
-              ${(knownPaths || []).map((p) => html`<option value=${p} />`)}
-            </datalist>
+            <label>${action.mode === 'rest' ? 'URL to call' : 'Path to write to'}</label>
+            ${action.mode === 'rest'
+              ? html`<input type="text" value=${action.path} onInput=${(e) => setAction({ path: e.target.value })} placeholder="https://example.com/hook/{path}" />`
+              : html`
+                  <input type="text" list="known-paths-datalist" value=${action.path} onInput=${(e) => setAction({ path: e.target.value })} placeholder="electrical.switches.anchorLight.state" />
+                  <datalist id="known-paths-datalist">
+                    ${(knownPaths || []).map((p) => html`<option value=${p} />`)}
+                  </datalist>
+                `}
           </div>
 
           <div class="field">
-            <label>Value to write</label>
+            <label>${action.mode === 'rest' ? 'Request body (POST/PUT only, ignored for GET)' : 'Value to write'}</label>
             <input type="text" value=${action.value} onInput=${(e) => setAction({ value: e.target.value })} placeholder='true, 42, "on", or {state} / {status.isAcknowledged}' />
             <div class="states">
               <code>{vessel}</code>/<code>{path}</code>/<code>{uuid}</code> as usual, or a dot-path into the triggering
@@ -269,7 +285,7 @@ function RuleModal({ rule, onSave, onClose, knownPaths }) {
 
           <label class="checkbox-row">
             <input type="checkbox" checked=${action.forward} onChange=${(e) => setAction({ forward: e.target.checked })} />
-            Also forward this notification (in addition to the write above)
+            Also forward this notification (in addition to the write/call above)
           </label>
         `}
 
