@@ -6,7 +6,7 @@ const path = require('path')
 // exercise this plugin's start()/stop()/registerWithRouter() and the delta
 // handler it subscribes internally. Each instance gets its own throwaway
 // data directory so tests never share state or touch a real SignalK install.
-function createFakeApp({ navigationState } = {}) {
+function createFakeApp({ navigationState, knownPaths = [], putSelfPathImpl } = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skn-test-'))
   let deltaHandler = null
   let currentNavState = navigationState
@@ -15,6 +15,7 @@ function createFakeApp({ navigationState } = {}) {
     forwarded: [],
     statusMessages: [],
     errors: [],
+    putCalls: [],
   }
 
   const app = {
@@ -31,6 +32,15 @@ function createFakeApp({ navigationState } = {}) {
     getSelfPath: (p) => {
       if (p !== 'navigation.state') return undefined
       return currentNavState === undefined ? undefined : { value: currentNavState }
+    },
+    putSelfPath: async (aPath, value, updateCb) => {
+      state.putCalls.push({ path: aPath, value })
+      const result = putSelfPathImpl ? await putSelfPathImpl(aPath, value) : undefined
+      updateCb()
+      return result
+    },
+    streambundle: {
+      getAvailablePaths: () => knownPaths,
     },
   }
 

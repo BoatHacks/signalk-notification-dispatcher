@@ -60,6 +60,7 @@
   .badge.ACCEPT { background: rgba(63,184,127,0.15); color: var(--forward); }
   .badge.CLEAR { background: rgba(142,160,176,0.2); color: var(--text-dim); }
   .badge.MODIFY { background: rgba(63,166,224,0.15); color: var(--accent); }
+  .badge.ACTION { background: rgba(168,123,224,0.18); color: #a87be0; }
   .badge.DROP { background: rgba(217,119,87,0.15); color: var(--suppress); }
   .badge.off { background: rgba(142,160,176,0.15); color: var(--text-dim); }
   .states { color: var(--text-dim); font-size: 12px; }
@@ -148,10 +149,11 @@ function emptyRule() {
     target: 'ACCEPT',
     targetPathTemplate: 'notifications.received.{path}.dsc-{uuid}',
     modify: { state: null },
+    action: { mode: 'delta', path: '', value: '', forward: false },
   }
 }
 
-function RuleModal({ rule, onSave, onClose }) {
+function RuleModal({ rule, onSave, onClose, knownPaths }) {
   const [form, setForm] = useState(rule)
   const set = (k, v) => setForm({ ...form, [k]: v })
   const match = form.match
@@ -160,6 +162,9 @@ function RuleModal({ rule, onSave, onClose }) {
     const has = match.states.includes(s)
     setMatch({ states: has ? match.states.filter((x) => x !== s) : [...match.states, s] })
   }
+
+  const action = form.action
+  const setAction = (patch) => set('action', { ...action, ...patch })
 
   const timebox = match.timebox
   const setTimebox = (patch) => setMatch({ timebox: { ...timebox, ...patch } })
@@ -219,6 +224,7 @@ function RuleModal({ rule, onSave, onClose }) {
           <select value=${form.target} onChange=${(e) => set('target', e.target.value)}>
             <option value="ACCEPT">ACCEPT — forward into vessels.self.notifications.received.*</option>
             <option value="MODIFY">MODIFY — forward, overriding a field first</option>
+            <option value="ACTION">ACTION — write a value to an arbitrary path</option>
             <option value="DROP">DROP — suppress silently</option>
           </select>
         </div>
@@ -233,7 +239,41 @@ function RuleModal({ rule, onSave, onClose }) {
           </div>
         `}
 
-        ${(form.target === 'ACCEPT' || form.target === 'MODIFY') && html`
+        ${form.target === 'ACTION' && html`
+          <div class="field">
+            <label>Write mode</label>
+            <select value=${action.mode} onChange=${(e) => setAction({ mode: e.target.value })}>
+              <option value="delta">Update the data tree (works for any path, not a real command)</option>
+              <option value="put">Send a PUT request (real actuation - only paths with a put handler, e.g. switches)</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label>Path to write to</label>
+            <input type="text" list="known-paths-datalist" value=${action.path} onInput=${(e) => setAction({ path: e.target.value })} placeholder="electrical.switches.anchorLight.state" />
+            <datalist id="known-paths-datalist">
+              ${(knownPaths || []).map((p) => html`<option value=${p} />`)}
+            </datalist>
+          </div>
+
+          <div class="field">
+            <label>Value to write</label>
+            <input type="text" value=${action.value} onInput=${(e) => setAction({ value: e.target.value })} placeholder='true, 42, "on", or {state} / {status.isAcknowledged}' />
+            <div class="states">
+              <code>{vessel}</code>/<code>{path}</code>/<code>{uuid}</code> as usual, or a dot-path into the triggering
+              notification's own value (e.g. <code>{state}</code>, <code>{status.isAcknowledged}</code>). A value that's
+              entirely one placeholder keeps that reference's real type; text like <code>true</code>, <code>42</code>, or
+              <code>{"a":1}</code> is parsed as JSON when possible, otherwise used as a plain string.
+            </div>
+          </div>
+
+          <label class="checkbox-row">
+            <input type="checkbox" checked=${action.forward} onChange=${(e) => setAction({ forward: e.target.checked })} />
+            Also forward this notification (in addition to the write above)
+          </label>
+        `}
+
+        ${(form.target === 'ACCEPT' || form.target === 'MODIFY' || (form.target === 'ACTION' && action.forward)) && html`
           <div class="field">
             <label>Target path template (<code>{vessel}</code>, <code>{path}</code>, and <code>{uuid}</code> placeholders)</label>
             <div class="input-with-button">
@@ -334,6 +374,7 @@ function App() {
   const [editing, setEditing] = useState(null)
   const [loading, setLoading] = useState(true)
   const [requestError, setRequestError] = useState(null)
+  const [knownPaths, setKnownPaths] = useState([])
   const fileInputRef = useRef(null)
 
   // Every fetch() here goes through this: fetch() only rejects on a
@@ -349,11 +390,16 @@ function App() {
     fetch(`${BASE}/ruleset`, { cache: 'no-store' }).then(checkOk).then((r) => r.json()).then(setRuleset)
   const loadActivity = () =>
     fetch(`${BASE}/activity`, { cache: 'no-store' }).then(checkOk).then((r) => r.json()).then(setActivity)
+  // Non-critical: powers the ACTION target's path autocomplete only, so a
+  // failure here shouldn't surface the global error banner or block anything.
+  const loadPaths = () =>
+    fetch(`${BASE}/paths`, { cache: 'no-store' }).then(checkOk).then((r) => r.json()).then(setKnownPaths).catch(() => {})
 
   useEffect(() => {
     Promise.all([loadRuleset(), loadActivity()])
       .catch((err) => setRequestError(err.message))
       .finally(() => setLoading(false))
+    loadPaths()
     const t = setInterval(() => loadActivity().catch((err) => setRequestError(err.message)), 5000)
     return () => clearInterval(t)
   }, [])
@@ -462,7 +508,7 @@ function App() {
             <button class="secondary" onClick=${exportRuleset}>Export JSON</button>
             <button class="secondary" onClick=${() => fileInputRef.current.click()}>Import JSON</button>
             <input ref=${fileInputRef} type="file" accept="application/json,.json" onChange=${importRuleset} />
-            <button onClick=${() => setEditing(emptyRule())}>+ Add rule</button>
+            <button onClick=${() => { loadPaths(); setEditing(emptyRule()) }}>+ Add rule</button>
           </div>
         </div>
 
@@ -514,7 +560,7 @@ function App() {
                   </td>
                   <td class="row-actions">
                     <button class="secondary" onClick=${() => toggleEnabled(rule)}>${rule.enabled === false ? 'Enable' : 'Disable'}</button>
-                    <button class="secondary" onClick=${() => setEditing(rule)}>Edit</button>
+                    <button class="secondary" onClick=${() => { loadPaths(); setEditing(rule) }}>Edit</button>
                     <button class="danger" onClick=${() => deleteRule(rule)}>Delete</button>
                   </td>
                 </tr>
@@ -533,7 +579,7 @@ function App() {
           ${activity.length === 0 ? html`<div class="empty">Nothing accepted or dropped yet.</div>` : activity.map((a) => html`
             <details class="activity-item">
               <summary>
-                <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : a.action === 'clear' ? 'CLEAR' : 'DROP'}">${a.action}</span>
+                <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : a.action === 'clear' ? 'CLEAR' : a.action === 'action' || a.action === 'action-error' ? 'ACTION' : 'DROP'}">${a.action}</span>
                 <span class="path">${a.sourcePath}</span>
                 ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
                 <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>
@@ -544,7 +590,7 @@ function App() {
         </details>
       </main>
 
-      ${editing && html`<${RuleModal} rule=${editing} onSave=${saveRule} onClose=${() => setEditing(null)} />`}
+      ${editing && html`<${RuleModal} rule=${editing} onSave=${saveRule} onClose=${() => setEditing(null)} knownPaths=${knownPaths} />`}
     </div>
   `
 }

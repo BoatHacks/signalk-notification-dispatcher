@@ -19,7 +19,8 @@ The ruleset is modeled like an iptables firewall chain:
   **top to bottom** — the first matching rule decides the outcome.
 - Each rule has a **match** (path pattern, vessel filter, states, optional
   timebox, optional vessel-state gate) and a **target**: `ACCEPT` (forward),
-  `MODIFY` (forward, overriding the notification's `state` first), or `DROP`
+  `MODIFY` (forward, overriding the notification's `state` first), `ACTION`
+  (write a value to an arbitrary path, optionally forwarding too), or `DROP`
   (suppress).
 - If **no rule matches**, the chain's default **policy** applies (`ACCEPT` or
   `DROP`, configurable in the webapp toolbar — defaults to `ACCEPT`, i.e.
@@ -56,15 +57,38 @@ Dispatcher). Each rule has:
 | Vessel filter | MMSI, full context string, or `*` for any vessel |
 | States | Which notification states (`nominal`/`normal`/`alert`/`warn`/`alarm`/`emergency`) trigger the rule. The editor shows the matching ITU priority category next to `emergency` (distress), `alarm` (urgency), and `warn` (safety), per the specification's recommended severity mapping. |
 | Always accept state changes to nominal/normal | Optional. When on, this rule also matches a transition to `nominal` or `normal` regardless of the states checked above - useful for a rule narrowly scoped to e.g. `alarm`/`emergency` that should still catch the source returning to normal, without cluttering the main states filter. Other match conditions (path, vessel, timebox, vessel-state gate) still apply as usual. If the rule's target is `MODIFY`, a `nominal`/`normal` transition bypasses the override entirely and is forwarded via `ACCEPT` unmodified instead - a `DROP` target is unaffected and still drops. |
-| Target | `ACCEPT` (forward), `MODIFY` (forward, overriding a field first), or `DROP` (suppress) |
+| Target | `ACCEPT` (forward), `MODIFY` (forward, overriding a field first), `ACTION` (write a value to an arbitrary path), or `DROP` (suppress) |
+| Write mode (`ACTION` only) | `delta` merges the value into the data model - the same mechanism `ACCEPT`/`MODIFY` use to forward, works for any path, but isn't a real command. `put` issues an actual PUT request against the own vessel - only works for paths with a registered put handler (e.g. switches), but is a real actuation. |
+| Path to write to (`ACTION` only) | Target Signal K path (own vessel). The field has an autocomplete/searchable dropdown (native `<datalist>`) populated from every path currently known to the server (`GET /paths`, backed by `app.streambundle.getAvailablePaths()`) - but free text is also accepted, since the target path may not exist yet or may itself use placeholders. |
+| Value to write (`ACTION` only) | Plain text. May contain `{ref}` placeholders: `{vessel}`/`{path}`/`{uuid}` as usual, or a dot-path into the *triggering notification's own value* (e.g. `{state}`, `{status.isAcknowledged}`). A value that's entirely one placeholder keeps that reference's real type (so a boolean status flag stays a boolean); otherwise placeholders are stringified into the surrounding text. After resolution, a string result gets one extra `JSON.parse` pass as type coercion - `true`/`42`/`{"a":1}` become their real types, anything not valid JSON (e.g. `on`) stays a plain string. |
+| Also forward (`ACTION` only) | Optional. Whether to *also* forward the notification via the normal target path template mechanism (same `{uuid}`-per-instance path reuse and clear-tracking as `ACCEPT`), in addition to the write. Independent of the write - the write always happens (if a path is set) regardless of this toggle. |
 | Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright. |
-| Target path template | Only for `ACCEPT`/`MODIFY` rules. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{path}.dsc-{uuid}` |
+| Target path template | Only for `ACCEPT`/`MODIFY` rules, and `ACTION` rules with "Also forward" on. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{path}.dsc-{uuid}` |
 | Timebox | Optional. Restricts the rule to only match within a tolerance window (in minutes) around one or more UTC anchor times. Entries are semicolon-separated and can be either `HH:MM` (e.g. `02:15; 06:15; 10:15; 14:15; 18:15; 22:15 ±5m` for a coastal station's 4-hourly broadcasts) or, for expert use, a standard 5-field crontab expression (`minute hour dom month dow`, UTC), e.g. `15 2,6,10,14,18,22 * * *` for the same schedule, or `0 8 * * 0` for "every Sunday at 08:00". Disabled by default (rule matches at any time). |
 | Skip while moored / Skip while anchored | Optional, independent toggles (either or both can be on). If the own vessel's `navigation.state` is currently `moored` and "skip while moored" is on (or `anchored` and "skip while anchored" is on), this rule is skipped as if it didn't match — evaluation falls through to the next rule, or to the default policy. |
 
 A recent-activity log at the bottom of the webapp shows the last 200
-accept/drop/modify/clear decisions, for debugging your rules. Each entry is
-collapsible and expands to the full JSON for that specific event.
+accept/drop/modify/action/clear decisions, for debugging your rules. Each
+entry is collapsible and expands to the full JSON for that specific event.
+
+### ACTION examples
+
+Flash a physical anchor light switch (a real actuation) when an anchor
+alarm fires, without forwarding the notification anywhere:
+
+- Write mode: `put`
+- Path to write to: `electrical.switches.anchorLight.state`
+- Value to write: `true`
+- Also forward: off
+
+Mirror just the acknowledgement flag of a received urgency call into a
+custom path, keyed by the notification's own path, while still forwarding
+the notification normally:
+
+- Write mode: `delta`
+- Path to write to: `notifications.acknowledged.{path}`
+- Value to write: `{status.isAcknowledged}`
+- Also forward: on, with the usual target path template
 
 ## Default policy
 
@@ -114,7 +138,8 @@ Example ruleset:
       },
       "target": "DROP",
       "targetPathTemplate": "notifications.received.{path}.dsc-{uuid}",
-      "modify": { "state": null }
+      "modify": { "state": null },
+      "action": { "mode": "delta", "path": "", "value": "", "forward": false }
     }
   ]
 }

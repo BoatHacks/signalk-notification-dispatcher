@@ -126,6 +126,36 @@
       "additionalProperties": false
     },
 
+    "action": {
+      "description": "Only meaningful when the rule's target is ACTION: writes a value to an arbitrary Signal K path as a side effect, independent of whether the notification itself gets forwarded (see `forward`).",
+      "type": "object",
+      "properties": {
+        "mode": {
+          "description": "How the write happens. 'delta' merges the value into the data model, the same mechanism ACCEPT/MODIFY use to forward - works for any path, but isn't a real command. 'put' issues an actual PUT request against the own vessel - only works for paths with a registered put handler (e.g. switches), but is a real actuation.",
+          "type": "string",
+          "enum": ["delta", "put"],
+          "default": "delta"
+        },
+        "path": {
+          "description": "Target Signal K path to write to (own vessel). Plain text; may contain {ref} placeholders - see `value`.",
+          "type": "string",
+          "default": ""
+        },
+        "value": {
+          "description": "Value to write, as plain text. May contain {ref} placeholders: {vessel}/{path}/{uuid} as usual, or a dot-path into the triggering notification's own value object (e.g. {state}, {status.isAcknowledged}). A template that's entirely a single placeholder resolves to that reference's own type (boolean/number/object/etc.); otherwise placeholders are stringified into the surrounding text. After placeholder resolution, a string result gets one extra JSON.parse pass as type coercion - \"true\"/\"42\"/'{\"a\":1}' become their real types, anything not valid JSON (e.g. \"on\") stays a plain string.",
+          "type": "string",
+          "default": ""
+        },
+        "forward": {
+          "description": "Whether to also forward the notification via the normal targetPathTemplate mechanism, same as ACCEPT would (with the same {uuid}-per-instance path reuse and clear-tracking).",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "required": ["mode", "path", "value", "forward"],
+      "additionalProperties": false
+    },
+
     "rule": {
       "type": "object",
       "properties": {
@@ -145,22 +175,26 @@
         },
         "match": { "$ref": "#/$defs/match" },
         "target": {
-          "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see `modify`), or DROP (suppress silently).",
+          "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see `modify`), ACTION (write an arbitrary value to an arbitrary path, see `action`), or DROP (suppress silently).",
           "type": "string",
-          "enum": ["ACCEPT", "MODIFY", "DROP"],
+          "enum": ["ACCEPT", "MODIFY", "ACTION", "DROP"],
           "default": "ACCEPT"
         },
         "targetPathTemplate": {
-          "description": "Only used when target is ACCEPT or MODIFY. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
+          "description": "Used when target is ACCEPT or MODIFY, and optionally by ACTION when action.forward is true. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
           "type": "string",
           "default": "notifications.received.{path}.dsc-{uuid}"
         },
         "modify": {
           "$ref": "#/$defs/modify",
           "default": { "state": null }
+        },
+        "action": {
+          "$ref": "#/$defs/action",
+          "default": { "mode": "delta", "path": "", "value": "", "forward": false }
         }
       },
-      "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify"],
+      "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify", "action"],
       "additionalProperties": false
     }
   }

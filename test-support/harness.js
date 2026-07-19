@@ -14,9 +14,9 @@ function createHarness(opts) {
   const { router, call } = createRouterCapture()
   plugin.registerWithRouter(router)
 
-  function sendDelta({ mmsi, context, path: notifPath, state, message, timestamp, clear }) {
+  function sendDelta({ mmsi, context, path: notifPath, state, message, timestamp, clear, extra }) {
     const ctx = context || `vessels.urn:mrn:imo:mmsi:${mmsi || '000000000'}`
-    const value = clear ? null : { state, message: message || 'test' }
+    const value = clear ? null : { state, message: message || 'test', ...extra }
     fake.getDeltaHandler()({
       context: ctx,
       updates: [

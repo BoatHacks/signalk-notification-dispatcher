@@ -88,7 +88,14 @@ module.exports = function (app) {
         // to its main severity filter.
         alwaysAcceptNormal: !!match.alwaysAcceptNormal,
       },
-      target: src.target === 'DROP' ? 'DROP' : src.target === 'MODIFY' ? 'MODIFY' : 'ACCEPT',
+      target:
+        src.target === 'DROP'
+          ? 'DROP'
+          : src.target === 'MODIFY'
+            ? 'MODIFY'
+            : src.target === 'ACTION'
+              ? 'ACTION'
+              : 'ACCEPT',
       targetPathTemplate:
         typeof src.targetPathTemplate === 'string' ? src.targetPathTemplate : DEFAULT_TARGET_PATH_TEMPLATE,
       // Only meaningful when target === 'MODIFY': overrides the notification's
@@ -98,6 +105,24 @@ module.exports = function (app) {
       // to be modifiable later.
       modify: {
         state: ALL_STATES.includes(src.modify && src.modify.state) ? src.modify.state : null,
+      },
+      // Only meaningful when target === 'ACTION': writes a value to an
+      // arbitrary Signal K path as a side effect, independent of whether the
+      // notification itself gets forwarded. `path` and `value` are plain
+      // text and may contain {ref} placeholders - {vessel}/{path}/{uuid} as
+      // usual, or a dot-path into the triggering notification's own value
+      // (e.g. {state}, {status.isAcknowledged}). `mode` picks how the write
+      // happens: 'delta' merges it into the data model like ACCEPT/MODIFY
+      // do (works for any path, but isn't a real command); 'put' issues an
+      // actual PUT request (only works for paths with a registered put
+      // handler, e.g. switches, but is a real actuation). `forward`
+      // optionally also forwards the notification via the normal
+      // targetPathTemplate mechanism, same as ACCEPT would.
+      action: {
+        mode: src.action && src.action.mode === 'put' ? 'put' : 'delta',
+        path: typeof (src.action && src.action.path) === 'string' ? src.action.path : '',
+        value: typeof (src.action && src.action.value) === 'string' ? src.action.value : '',
+        forward: !!(src.action && src.action.forward),
       },
     }
   }
@@ -327,12 +352,61 @@ module.exports = function (app) {
     return true
   }
 
-  function buildTargetPath(rule, { subPath, vesselLabel }) {
+  // Resolves a single {ref} placeholder against the current delta context.
+  // {vessel}/{path}/{uuid} are the existing, path-oriented placeholders.
+  // Anything else is treated as a dot-path into the triggering
+  // notification's own value object (e.g. {state}, {status.isAcknowledged}),
+  // per the ACTION target's "reference the incoming/updated notification"
+  // convention. Returns undefined if the reference can't be resolved, so
+  // callers can decide how to handle a miss (leave it literal, fall back).
+  function resolveTemplateRef(ref, ctx) {
+    if (ref === 'vessel') return ctx.vesselLabel
+    if (ref === 'path') return ctx.subPath
+    if (ref === 'uuid') return crypto.randomUUID()
+    if (ctx.notificationValue == null) return undefined
+    return ref.split('.').reduce((cur, key) => (cur == null ? undefined : cur[key]), ctx.notificationValue)
+  }
+
+  // Resolves all {ref} placeholders in a string template. A template that's
+  // ENTIRELY a single placeholder (e.g. "{status.isAcknowledged}") resolves
+  // to the referenced value's own type (boolean/number/object/etc.), not a
+  // stringified version - useful for ACTION values. Placeholders embedded in
+  // a larger string are stringified in place. An unresolvable reference is
+  // left as the literal "{ref}" text rather than silently becoming empty.
+  function resolveTemplateString(template, ctx) {
+    const str = String(template)
+    const fullMatch = /^\{([^{}]+)\}$/.exec(str)
+    if (fullMatch) {
+      const resolved = resolveTemplateRef(fullMatch[1], ctx)
+      return resolved === undefined ? str : resolved
+    }
+    return str.replace(/\{([^{}]+)\}/g, (whole, ref) => {
+      const resolved = resolveTemplateRef(ref, ctx)
+      if (resolved === undefined) return whole
+      return typeof resolved === 'object' ? JSON.stringify(resolved) : String(resolved)
+    })
+  }
+
+  // Resolves an ACTION rule's value template. Values are authored as plain
+  // text (a single input field in the webapp), so after placeholder
+  // resolution, a string result gets one extra pass through JSON.parse as a
+  // convenience type coercion - "true"/"42"/'{"a":1}' become their real
+  // types, anything that isn't valid JSON (e.g. "on") stays a plain string.
+  // A whole-string {ref} substitution that already resolved to a non-string
+  // (e.g. a boolean straight from the notification's own value) is used as-is.
+  function resolveActionValue(template, ctx) {
+    const resolved = resolveTemplateString(template, ctx)
+    if (typeof resolved !== 'string') return resolved
+    try {
+      return JSON.parse(resolved)
+    } catch (err) {
+      return resolved
+    }
+  }
+
+  function buildTargetPath(rule, { subPath, vesselLabel, value }) {
     const template = rule.targetPathTemplate || DEFAULT_TARGET_PATH_TEMPLATE
-    return template
-      .replaceAll('{vessel}', vesselLabel)
-      .replaceAll('{path}', subPath)
-      .replaceAll('{uuid}', () => crypto.randomUUID())
+    return resolveTemplateString(template, { subPath, vesselLabel, notificationValue: value || null })
   }
 
   // ---- delta handling ------------------------------------------------------
@@ -400,6 +474,64 @@ module.exports = function (app) {
             sourcePath: valuePath,
             vessel: vesselLabel,
             state,
+          })
+          return
+        }
+
+        if (effectiveRule.target === 'ACTION') {
+          const templateCtx = { subPath, vesselLabel, notificationValue: value }
+          const action = effectiveRule.action || {}
+          let actionPath = null
+          let actionValue = undefined
+
+          if (action.path) {
+            actionPath = resolveTemplateString(action.path, templateCtx)
+            actionValue = resolveActionValue(action.value, templateCtx)
+
+            if (action.mode === 'put') {
+              app.putSelfPath(actionPath, actionValue, () => {}).catch((err) => {
+                app.error(`ACTION put failed for ${actionPath}: ${err.message}`)
+                logActivity({
+                  action: 'action-error',
+                  rule: effectiveRule.label || effectiveRule.id,
+                  sourcePath: valuePath,
+                  vessel: vesselLabel,
+                  state,
+                  actionMode: 'put',
+                  actionPath,
+                  actionValue,
+                  error: err.message,
+                })
+              })
+            } else {
+              app.handleMessage(plugin.id, {
+                updates: [{ values: [{ path: actionPath, value: actionValue }] }],
+              })
+            }
+          }
+
+          let targetPath = null
+          if (action.forward) {
+            targetPath = forwardedTargetPaths.get(trackingKey)
+            if (!targetPath) {
+              targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel, value })
+              forwardedTargetPaths.set(trackingKey, targetPath)
+            }
+            app.handleMessage(plugin.id, {
+              updates: [{ values: [{ path: targetPath, value }] }],
+            })
+          }
+
+          logActivity({
+            action: 'action',
+            rule: effectiveRule.label || effectiveRule.id,
+            sourcePath: valuePath,
+            targetPath: targetPath || undefined,
+            vessel: vesselLabel,
+            state,
+            actionMode: action.mode,
+            actionPath: actionPath || undefined,
+            actionValue: actionPath ? actionValue : undefined,
           })
           return
         }
@@ -567,6 +699,21 @@ module.exports = function (app) {
 
     router.get('/activity', (req, res) => {
       res.json(activityLog)
+    })
+
+    // Every path currently flowing through the server, for the ACTION
+    // target's path picker in the webapp. Not scoped to notifications -
+    // ACTION can write to any path.
+    router.get('/paths', (req, res) => {
+      try {
+        const paths =
+          app.streambundle && typeof app.streambundle.getAvailablePaths === 'function'
+            ? app.streambundle.getAvailablePaths()
+            : []
+        res.json(paths)
+      } catch (err) {
+        res.status(500).json({ error: err.message })
+      }
     })
   }
 
