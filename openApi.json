@@ -1,0 +1,559 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Notification Dispatcher",
+    "description": "Forwards, modifies, or acts on notifications from other vessels (vessels.*.notifications.*), rule-based, via an iptables-style ruleset (a default policy plus an ordered list of match/target rules). This API is used by the plugin's companion webapp (the rule editor, JSON import/export, and activity log), and can equally be driven by any external client. See docs/rules-schema.json in the repository for the complete JSON Schema (draft 2020-12) description of the Ruleset/Rule shape, used by the webapp's JSON editor for validation - the schemas below describe the same shape for API tooling purposes and are kept in sync with it by hand.",
+    "version": "0.1.0",
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "/plugins/signalk-notification-dispatcher"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Ruleset",
+      "description": "The whole ruleset (default policy + all rules) as one document - used for JSON import/export and the inline JSON editor"
+    },
+    {
+      "name": "Policy",
+      "description": "The chain's default target, applied when no rule matches a notification"
+    },
+    {
+      "name": "Rules",
+      "description": "Individual rule CRUD and reordering"
+    },
+    {
+      "name": "Activity",
+      "description": "Recent accept/modify/action/drop/clear decisions, for debugging rules"
+    },
+    {
+      "name": "Paths",
+      "description": "Signal K paths currently known to the server, for the ACTION target's path picker"
+    }
+  ],
+  "paths": {
+    "/ruleset": {
+      "get": {
+        "tags": ["Ruleset"],
+        "summary": "Get the whole ruleset",
+        "description": "Returns the current default policy and the full ordered list of rules. Never cached.",
+        "responses": {
+          "200": {
+            "description": "Current ruleset",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Ruleset" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Ruleset"],
+        "summary": "Replace the whole ruleset",
+        "description": "Replaces the current policy and rules wholesale - used by \"Apply ruleset\" in the JSON editor and by JSON import. Every rule is sanitized (missing fields filled with defaults, unknown fields dropped, ids generated for rules without one) rather than rejected outright, so a partial or hand-edited document is tolerated.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RulesetInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The ruleset as saved, after sanitization",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Ruleset" }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body wasn't an object, or its \"rules\" field wasn't an array",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/policy": {
+      "get": {
+        "tags": ["Policy"],
+        "summary": "Get the default policy",
+        "responses": {
+          "200": {
+            "description": "Current default policy",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Policy" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Policy"],
+        "summary": "Set the default policy",
+        "description": "Changes what happens to a notification that no rule matches. Defaults to ACCEPT (permit-all) on a fresh install.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Policy" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy as saved",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Policy" }
+              }
+            }
+          },
+          "400": {
+            "description": "policy was neither \"ACCEPT\" nor \"DROP\"",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules": {
+      "get": {
+        "tags": ["Rules"],
+        "summary": "List all rules",
+        "description": "Returns the rules in their current evaluation order (top to bottom, first match wins).",
+        "responses": {
+          "200": {
+            "description": "All rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Rule" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["Rules"],
+        "summary": "Create a rule",
+        "description": "Appends a new rule to the end of the list. Any field omitted from the request body is filled with a sane default (see Rule) - a bare `{}` body creates a fully-usable, permissive rule. Any `id` in the request body is ignored - one is always generated server-side.",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RuleInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The newly-created rule",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Rule" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Rules"],
+        "summary": "Reorder rules",
+        "description": "Bulk-reorders the rule list to match the given sequence of rule ids (evaluation order is top to bottom, so this changes which rule wins when more than one would otherwise match).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Rule ids in the desired order."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "All rules, in their new order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Rule" }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request body wasn't an array",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}": {
+      "put": {
+        "tags": ["Rules"],
+        "summary": "Update a rule",
+        "description": "Merges the given fields into the existing rule (a shallow merge, except `match` which is merged one level deep too, so e.g. updating just `match.path` doesn't clobber the rest of `match`). The rule's `id` can't be changed.",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RuleInput" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The rule after merging and sanitization",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Rule" }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that id",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Rules"],
+        "summary": "Delete a rule",
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rule that was removed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Rule" }
+              }
+            }
+          },
+          "404": {
+            "description": "No rule with that id",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/activity": {
+      "get": {
+        "tags": ["Activity"],
+        "summary": "Recent activity",
+        "description": "The last 200 accept/modify/action/action-error/drop/clear decisions, most recent first. Never cached.",
+        "responses": {
+          "200": {
+            "description": "Recent activity log entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/ActivityEntry" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/paths": {
+      "get": {
+        "tags": ["Paths"],
+        "summary": "List known Signal K paths",
+        "description": "Every path currently flowing through the server (via app.streambundle.getAvailablePaths()), for the ACTION target's path picker in the webapp. Not scoped to notifications - ACTION can write to any path. Returns an empty array if the server doesn't expose streambundle.",
+        "responses": {
+          "200": {
+            "description": "Known paths",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to enumerate paths",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/Error" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "NotificationState": {
+        "type": "string",
+        "description": "Signal K notification severity state.",
+        "enum": ["nominal", "normal", "alert", "warn", "alarm", "emergency"]
+      },
+      "Policy": {
+        "type": "object",
+        "properties": {
+          "policy": {
+            "type": "string",
+            "description": "Default target applied when no rule matches a notification.",
+            "enum": ["ACCEPT", "DROP"]
+          }
+        },
+        "required": ["policy"]
+      },
+      "Timebox": {
+        "type": "object",
+        "description": "Optional time-of-day restriction on a rule. When enabled, the rule only matches within +/- toleranceMinutes of one of the given anchor times (handles wraparound across midnight).",
+        "properties": {
+          "enabled": { "type": "boolean", "default": false },
+          "times": {
+            "type": "array",
+            "description": "Each entry is either a simple \"HH:MM\" UTC anchor time, or a standard 5-field crontab expression (\"minute hour dom month dow\", UTC) for expert use, e.g. \"15 2,6,10,14,18,22 * * *\".",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "toleranceMinutes": {
+            "type": "number",
+            "description": "Tolerance window, in minutes, applied on either side of each anchor time.",
+            "default": 5
+          }
+        },
+        "required": ["enabled", "times", "toleranceMinutes"]
+      },
+      "VesselState": {
+        "type": "object",
+        "description": "Per-rule gate based on the own vessel's navigation.state. Independent toggles; either or both can be enabled. If the own vessel is currently in a state with its toggle enabled, the rule is skipped as if it hadn't matched (evaluation falls through to the next rule, or to the default policy).",
+        "properties": {
+          "blockWhenMoored": { "type": "boolean", "default": false },
+          "blockWhenAnchored": { "type": "boolean", "default": false }
+        },
+        "required": ["blockWhenMoored", "blockWhenAnchored"]
+      },
+      "Match": {
+        "type": "object",
+        "description": "The conditions a notification must meet for this rule to apply. All conditions must hold (logical AND).",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "Glob pattern matched against the notification path with the leading \"notifications.\" stripped. \"*\" matches any run of characters, including \".\" (so \"navigation.anchor*\" matches \"navigation.anchorDrag\"). \"*\" alone or an empty string matches everything.",
+            "default": "*"
+          },
+          "vessel": {
+            "type": "string",
+            "description": "Glob pattern (same wildcard rules as path) matched against either the notification's source vessel MMSI/label or its full Signal K context string. \"*\" matches any vessel.",
+            "default": "*"
+          },
+          "states": {
+            "type": "array",
+            "description": "Notification states that trigger this rule.",
+            "items": { "$ref": "#/components/schemas/NotificationState" },
+            "default": ["alert", "warn", "alarm", "emergency"]
+          },
+          "timebox": { "$ref": "#/components/schemas/Timebox" },
+          "vesselState": { "$ref": "#/components/schemas/VesselState" },
+          "alwaysAcceptNormal": {
+            "type": "boolean",
+            "description": "When true, this rule also matches state transitions to \"nominal\"/\"normal\" regardless of the states list above - so a rule narrowly scoped to e.g. alarm/emergency can still catch a source returning to normal. If the rule's target is MODIFY, a matching nominal/normal transition bypasses the override entirely and is forwarded via ACCEPT unmodified instead; a DROP target is unaffected and still drops.",
+            "default": false
+          }
+        },
+        "required": ["path", "vessel", "states", "timebox", "vesselState", "alwaysAcceptNormal"]
+      },
+      "Modify": {
+        "type": "object",
+        "description": "Only meaningful when the rule's target is MODIFY: overrides applied to the notification before it's forwarded.",
+        "properties": {
+          "state": {
+            "description": "Overrides the notification's own state while forwarding it, e.g. downgrading a recurring securité broadcast from alarm to warn instead of dropping it outright. null means no override.",
+            "allOf": [{ "$ref": "#/components/schemas/NotificationState" }],
+            "nullable": true,
+            "default": null
+          }
+        },
+        "required": ["state"]
+      },
+      "Action": {
+        "type": "object",
+        "description": "Only meaningful when the rule's target is ACTION: writes a value to an arbitrary Signal K path, or calls an arbitrary URL, as a side effect - independent of whether the notification itself gets forwarded (see forward).",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "description": "How the write happens. 'delta' merges the value into the data model, the same mechanism ACCEPT/MODIFY use to forward - works for any Signal K path, but isn't a real command. 'put' issues an actual PUT request against the own vessel - only works for paths with a registered put handler (e.g. switches), but is a real actuation. 'rest' calls an arbitrary URL over HTTP - not scoped to Signal K at all, for calling out to other services (e.g. a Node-RED flow or Home Assistant webhook); see method.",
+            "enum": ["delta", "put", "rest"],
+            "default": "delta"
+          },
+          "path": {
+            "type": "string",
+            "description": "Target Signal K path to write to (own vessel), for delta/put mode - or the full URL to call, for rest mode. Plain text; may contain {ref} placeholders - see value.",
+            "default": ""
+          },
+          "value": {
+            "type": "string",
+            "description": "Value to write (delta/put mode), or the request body sent for POST/PUT (rest mode, ignored for GET) - as plain text. May contain {ref} placeholders: {vessel}/{path}/{uuid} as usual, or a dot-path into the triggering notification's own value object (e.g. {state}, {status.isAcknowledged}). A template that's entirely a single placeholder resolves to that reference's own type (boolean/number/object/etc.); otherwise placeholders are stringified into the surrounding text. After placeholder resolution, a string result gets one extra JSON.parse pass as type coercion - \"true\"/\"42\"/'{\"a\":1}' become their real types, anything not valid JSON (e.g. \"on\") stays a plain string.",
+            "default": ""
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP method used when mode is 'rest'. Ignored for delta/put. 10-second timeout; a non-2xx response or network failure is logged as an action-error activity entry.",
+            "enum": ["GET", "PUT", "POST"],
+            "default": "GET"
+          },
+          "forward": {
+            "type": "boolean",
+            "description": "Whether to also forward the notification via the normal targetPathTemplate mechanism, same as ACCEPT would (with the same {uuid}-per-instance path reuse and clear-tracking).",
+            "default": false
+          }
+        },
+        "required": ["mode", "path", "value", "method", "forward"]
+      },
+      "Rule": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable identifier, generated server-side."
+          },
+          "label": {
+            "type": "string",
+            "description": "Optional human-readable label shown in the webapp and activity log instead of the id.",
+            "default": ""
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Disabled rules are skipped entirely during matching.",
+            "default": true
+          },
+          "match": { "$ref": "#/components/schemas/Match" },
+          "target": {
+            "type": "string",
+            "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see modify), ACTION (write a value to an arbitrary path or call an arbitrary URL, see action), or DROP (suppress silently).",
+            "enum": ["ACCEPT", "MODIFY", "ACTION", "DROP"],
+            "default": "ACCEPT"
+          },
+          "targetPathTemplate": {
+            "type": "string",
+            "description": "Used when target is ACCEPT or MODIFY, and optionally by ACTION when action.forward is true. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
+            "default": "notifications.received.{path}.dsc-{uuid}"
+          },
+          "modify": { "$ref": "#/components/schemas/Modify" },
+          "action": { "$ref": "#/components/schemas/Action" }
+        },
+        "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify", "action"]
+      },
+      "RuleInput": {
+        "description": "Same shape as Rule, but every field is optional - anything omitted is filled with its default (see Rule for defaults). Used for POST /rules (create) and PUT /rules/{id} (update, merged into the existing rule).",
+        "type": "object"
+      },
+      "Ruleset": {
+        "type": "object",
+        "description": "The whole ruleset. Modeled like an iptables firewall chain: policy is the default target when no rule matches, rules is the ordered chain evaluated top to bottom (first match wins).",
+        "properties": {
+          "policy": {
+            "type": "string",
+            "enum": ["ACCEPT", "DROP"],
+            "default": "ACCEPT"
+          },
+          "rules": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Rule" },
+            "default": []
+          }
+        },
+        "required": ["policy", "rules"]
+      },
+      "RulesetInput": {
+        "description": "Same shape as Ruleset, but tolerant of partial/hand-edited input - policy defaults to ACCEPT if missing or invalid, and each entry in rules is sanitized the same way RuleInput is.",
+        "type": "object"
+      },
+      "ActivityEntry": {
+        "type": "object",
+        "description": "One forward/modify/action/drop/clear decision. Fields beyond the common ones vary by action - e.g. targetPath only appears for accept/modify/action-with-forward/clear, and actionMode/actionPath/actionValue only appear for action/action-error.",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["accept", "modify", "action", "action-error", "drop", "clear"]
+          },
+          "rule": {
+            "type": "string",
+            "description": "The matched rule's label (or id if unlabeled), or a description of the default policy if no rule matched."
+          },
+          "sourcePath": {
+            "type": "string",
+            "description": "The originating notification's full path, e.g. notifications.navigation.anchor."
+          },
+          "targetPath": {
+            "type": "string",
+            "description": "Where the notification was forwarded to, if it was forwarded."
+          },
+          "vessel": {
+            "type": "string",
+            "description": "The source vessel's MMSI or sanitized context label."
+          },
+          "state": {
+            "type": "string",
+            "description": "The notification's state, or \"<from>→<to>\" for a modify decision, or \"cleared\" for a clear."
+          },
+          "actionMode": {
+            "type": "string",
+            "enum": ["delta", "put", "rest"]
+          },
+          "actionPath": {
+            "type": "string",
+            "description": "The resolved Signal K path or URL an ACTION rule wrote to / called."
+          },
+          "error": {
+            "type": "string",
+            "description": "Only present on action-error entries."
+          }
+        },
+        "required": ["action", "rule", "sourcePath", "vessel", "state"]
+      }
+    }
+  }
+}

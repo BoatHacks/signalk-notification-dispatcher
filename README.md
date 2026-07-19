@@ -164,6 +164,21 @@ Example ruleset:
 }
 ```
 
+## REST API
+
+Every endpoint the webapp uses (`/ruleset`, `/policy`, `/rules`, `/rules/{id}`,
+`/activity`, `/paths`) is documented as an [OpenAPI 3.0.3](https://spec.openapis.org/oas/v3.0.3)
+specification at [`openApi.json`](openApi.json), exposed via the plugin's
+`getOpenApi()` method per Signal K's convention - it shows up in the server's
+Admin UI under Documentation → OpenAPI, and can be fed to any standard
+OpenAPI viewer/client generator. It's kept in sync with `docs/rules-schema.json`
+by hand (the two serve different purposes: `docs/rules-schema.json` is a
+standalone JSON Schema used by the webapp's own JSON editor for validation;
+`openApi.json` additionally documents every request/response shape and error
+case for API tooling) and is tested (`test/openapi.test.js`) to make sure its
+`paths` match what `registerWithRouter` actually registers and every `$ref`
+resolves.
+
 ## Development
 
 ```

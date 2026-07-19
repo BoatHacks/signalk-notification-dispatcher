@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
+const openapi = require('./openApi.json')
 
 const ALL_STATES = ['nominal', 'normal', 'alert', 'warn', 'alarm', 'emergency']
 const MAX_ACTIVITY_LOG = 200
@@ -646,6 +647,11 @@ module.exports = function (app) {
   }
 
   // ---- REST API for the rule-builder webapp --------------------------------
+
+  // If a plugin provides an API, SignalK's convention is to implement
+  // getOpenApi() returning the parsed openApi.json - this surfaces the
+  // definition in the server's Admin UI under Documentation -> OpenAPI.
+  plugin.getOpenApi = () => openapi
 
   plugin.registerWithRouter = function (router) {
     // Every response here reflects live, frequently-mutated state (the
