@@ -35,7 +35,6 @@ test('schema: a rule using every feature (timebox, crontab, vessel-state gate, M
     },
     target: 'MODIFY',
     modify: { state: 'alert' },
-    targetPathTemplate: 'notifications.received.custom.{vessel}.{path}',
   })
   h.call('PUT', '/policy', { policy: 'DROP' })
 
@@ -69,10 +68,11 @@ test('schema: rejects a rule with an unknown target', () => {
       states: [],
       timebox: { enabled: false, times: [], toleranceMinutes: 5 },
       vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
+      alwaysAcceptNormal: false,
     },
     target: 'REJECT',
-    targetPathTemplate: 'x',
     modify: { state: null },
+    action: { mode: 'delta', path: '', value: '', method: 'GET', forward: false },
   })
   assert.equal(validate(ruleset), false)
   h.cleanup()
@@ -91,10 +91,11 @@ test('schema: rejects an unknown notification state in match.states', () => {
       states: ['critical'],
       timebox: { enabled: false, times: [], toleranceMinutes: 5 },
       vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
+      alwaysAcceptNormal: false,
     },
     target: 'ACCEPT',
-    targetPathTemplate: 'x',
     modify: { state: null },
+    action: { mode: 'delta', path: '', value: '', method: 'GET', forward: false },
   })
   assert.equal(validate(ruleset), false)
   h.cleanup()

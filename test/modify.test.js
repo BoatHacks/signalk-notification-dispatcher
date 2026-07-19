@@ -20,18 +20,17 @@ test('modify: forwards the notification with the overridden state', () => {
   h.cleanup()
 })
 
-test('modify: uses the same target path template as ACCEPT', () => {
+test('modify: uses the same (fixed default) target path template as ACCEPT', () => {
   const h = createHarness()
   h.call('POST', '/rules', {
     match: { path: 'safety.securite', vessel: '*' },
     target: 'MODIFY',
     modify: { state: 'warn' },
-    targetPathTemplate: 'notifications.received.custom.{vessel}.{path}',
   })
   h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
-  assert.equal(
+  assert.match(
     h.state.forwarded[0].updates[0].values[0].path,
-    'notifications.received.custom.1.safety.securite'
+    /^notifications\.received\.safety\.securite\.dsc-[0-9a-f-]{36}$/
   )
   h.cleanup()
 })

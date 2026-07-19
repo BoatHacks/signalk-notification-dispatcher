@@ -82,67 +82,7 @@ test('matching: a disabled rule is skipped entirely', () => {
   h.cleanup()
 })
 
-test('matching: ACCEPT rule forwards with the target path template applied', () => {
-  const h = createHarness()
-  h.call('POST', '/rules', {
-    match: { path: 'navigation.anchor', vessel: '*' },
-    target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.custom.{vessel}.{path}',
-  })
-  h.sendDelta({ mmsi: '211234567', path: 'navigation.anchor', state: 'alarm' })
-  assert.equal(h.state.forwarded.length, 1)
-  assert.equal(
-    h.state.forwarded[0].updates[0].values[0].path,
-    'notifications.received.custom.211234567.navigation.anchor'
-  )
-  h.cleanup()
-})
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-test('matching: {uuid} placeholder inserts a freshly-generated UUID', () => {
-  const h = createHarness()
-  h.call('POST', '/rules', {
-    match: { path: 'urgency.*', vessel: '*' },
-    target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}-{uuid}',
-  })
-  h.sendDelta({ mmsi: '211234567', path: 'urgency.test', state: 'alarm' })
-  const forwardedPath = h.state.forwarded[0].updates[0].values[0].path
-  const match = forwardedPath.match(/^notifications\.received\.211234567\.urgency\.test-(.+)$/)
-  assert.ok(match, `expected a uuid suffix, got: ${forwardedPath}`)
-  assert.match(match[1], UUID_RE)
-  h.cleanup()
-})
-
-test('matching: each {uuid} occurrence (including across separate notifications) gets a distinct value', () => {
-  const h = createHarness()
-  h.call('POST', '/rules', {
-    match: { path: '*', vessel: '*' },
-    target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}-{uuid}-{uuid}',
-  })
-  h.sendDelta({ mmsi: '1', path: 'urgency.a', state: 'alarm' })
-  h.sendDelta({ mmsi: '1', path: 'urgency.b', state: 'alarm' })
-
-  const [firstPath, secondPath] = h.state.forwarded.map((d) => d.updates[0].values[0].path)
-  const firstUuids = firstPath.match(/-(.+)-(.+)$/).slice(1)
-  assert.notEqual(firstUuids[0], firstUuids[1], 'two {uuid} tokens in the same template should differ')
-  assert.notEqual(firstPath, secondPath, 'separate notifications should get separate uuids')
-  h.cleanup()
-})
-
-test('matching: a template without {uuid} is unaffected', () => {
-  const h = createHarness()
-  h.call('POST', '/rules', {
-    match: { path: 'navigation.anchor', vessel: '*' },
-    target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}',
-  })
-  h.sendDelta({ mmsi: '1', path: 'navigation.anchor', state: 'alarm' })
-  assert.equal(h.state.forwarded[0].updates[0].values[0].path, 'notifications.received.1.navigation.anchor')
-  h.cleanup()
-})
 
 test('matching: default target path template forwards to notifications.received.<path>.dsc-<uuid>', () => {
   const h = createHarness()
@@ -153,5 +93,16 @@ test('matching: default target path template forwards to notifications.received.
   const match = forwardedPath.match(/^notifications\.received\.urgency\.test\.dsc-(.+)$/)
   assert.ok(match, `expected the default template's shape, got: ${forwardedPath}`)
   assert.match(match[1], UUID_RE)
+  h.cleanup()
+})
+
+test('matching: separate notifications each get a distinct {uuid}', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', { match: { path: '*', vessel: '*' }, target: 'ACCEPT' })
+  h.sendDelta({ mmsi: '1', path: 'urgency.a', state: 'alarm' })
+  h.sendDelta({ mmsi: '1', path: 'urgency.b', state: 'alarm' })
+
+  const [firstPath, secondPath] = h.state.forwarded.map((d) => d.updates[0].values[0].path)
+  assert.notEqual(firstPath, secondPath, 'separate notifications should get separate uuids')
   h.cleanup()
 })

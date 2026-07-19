@@ -20,7 +20,6 @@ test('clearing: {uuid} in the target path template - the clear reuses the SAME g
   h.call('POST', '/rules', {
     match: { path: 'urgency.*', vessel: '*' },
     target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}-{uuid}',
   })
 
   h.sendDelta({ mmsi: '211234567', path: 'urgency.test', state: 'alarm' })
@@ -39,7 +38,6 @@ test('clearing: repeated (non-cleared) updates to the same notification land on 
   h.call('POST', '/rules', {
     match: { path: 'urgency.*', vessel: '*' },
     target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}-{uuid}',
   })
 
   h.sendDelta({ mmsi: '1', path: 'urgency.test', state: 'alarm', message: 'first' })
@@ -56,7 +54,6 @@ test('clearing: after a clear, a new occurrence of the same notification gets a 
   h.call('POST', '/rules', {
     match: { path: 'urgency.*', vessel: '*' },
     target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}-{uuid}',
   })
 
   h.sendDelta({ mmsi: '1', path: 'urgency.test', state: 'alarm' })

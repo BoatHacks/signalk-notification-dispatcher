@@ -94,20 +94,19 @@ test('action: forward=false (default) does not also forward the notification', (
   h.cleanup()
 })
 
-test('action: forward=true also forwards via the normal targetPathTemplate mechanism', () => {
+test('action: forward=true also forwards via the default target path template', () => {
   const h = createHarness()
   h.call('POST', '/rules', {
     match: { path: 'navigation.anchor', vessel: '*' },
     target: 'ACTION',
     action: { mode: 'delta', path: 'electrical.switches.x.state', value: 'true', forward: true },
-    targetPathTemplate: 'notifications.received.custom.{path}',
   })
   h.sendDelta({ mmsi: '1', path: 'navigation.anchor', state: 'alarm' })
 
   assert.equal(h.state.forwarded.length, 2)
   const paths = h.state.forwarded.map((d) => d.updates[0].values[0].path)
   assert.ok(paths.includes('electrical.switches.x.state'))
-  assert.ok(paths.includes('notifications.received.custom.navigation.anchor'))
+  assert.ok(paths.some((p) => /^notifications\.received\.navigation\.anchor\.dsc-[0-9a-f-]{36}$/.test(p)))
   h.cleanup()
 })
 
@@ -117,7 +116,6 @@ test('action: forward=true reuses the same tracked path across updates, and clea
     match: { path: 'urgency.*', vessel: '*' },
     target: 'ACTION',
     action: { mode: 'delta', path: 'electrical.switches.x.state', value: 'true', forward: true },
-    targetPathTemplate: 'notifications.received.{path}-{uuid}',
   })
   h.sendDelta({ mmsi: '1', path: 'urgency.test', state: 'alarm' })
   h.sendDelta({ mmsi: '1', path: 'urgency.test', state: 'alarm' })
@@ -140,11 +138,13 @@ test('action: no action.path configured skips the write but still logs, forward 
     match: { path: 'navigation.anchor', vessel: '*' },
     target: 'ACTION',
     action: { mode: 'delta', path: '', value: 'true', forward: true },
-    targetPathTemplate: 'notifications.received.custom.{path}',
   })
   h.sendDelta({ mmsi: '1', path: 'navigation.anchor', state: 'alarm' })
   assert.equal(h.state.forwarded.length, 1, 'only the forward, no action write since path is empty')
-  assert.equal(h.state.forwarded[0].updates[0].values[0].path, 'notifications.received.custom.navigation.anchor')
+  assert.match(
+    h.state.forwarded[0].updates[0].values[0].path,
+    /^notifications\.received\.navigation\.anchor\.dsc-[0-9a-f-]{36}$/
+  )
   h.cleanup()
 })
 

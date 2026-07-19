@@ -22,6 +22,9 @@ The ruleset is modeled like an iptables firewall chain:
   `MODIFY` (forward, overriding the notification's `state` first), `ACTION`
   (write a value to an arbitrary path, call an arbitrary URL, optionally
   forwarding too), or `DROP` (suppress).
+- Forwarding (via `ACCEPT`, `MODIFY`, or `ACTION` with "Also forward" on)
+  always goes to `notifications.received.{path}.dsc-{uuid}` on the own
+  vessel - this isn't configurable per rule.
 - If **no rule matches**, the chain's default **policy** applies (`ACCEPT` or
   `DROP`, configurable in the webapp toolbar — defaults to `ACCEPT`, i.e.
   permit-all).
@@ -34,16 +37,16 @@ the tree entirely — not leave it sitting there with a null value.
 
 The plugin tracks, per source notification, exactly which path it last
 forwarded that notification to. When the source clears it, the clear is
-sent to that *same* path — not a freshly-recomputed one. This matters in
-particular for target path templates using `{uuid}`: without this
-tracking, the clear would generate a brand new random path (since every
-call to the template generates a fresh uuid), so it would never reach the
-originally-forwarded copy, leaving it stuck forever while also creating an
-unrelated, immediately-stray `null`-valued entry. The same tracking also
-means repeated updates to a still-active notification land on the same
-forwarded node instead of spawning a new one on every update; a fresh path
-(and a fresh `{uuid}`, if the template uses one) is only generated for the
-*next* occurrence, after the current one has been cleared.
+sent to that *same* path — not a freshly-recomputed one. This matters
+because the forwarding path contains `{uuid}`: without this tracking, the
+clear would generate a brand new random path (every call generates a fresh
+uuid), so it would never reach the originally-forwarded copy, leaving it
+stuck forever while also creating an unrelated, immediately-stray
+`null`-valued entry. The same tracking also means repeated updates to a
+still-active notification land on the same forwarded node instead of
+spawning a new one on every update; a fresh path (and a fresh `{uuid}`) is
+only generated for the *next* occurrence, after the current one has been
+cleared.
 
 ## Configuring rules
 
@@ -62,9 +65,8 @@ Dispatcher). Each rule has:
 | Path to write to / URL to call (`ACTION` only) | For `delta`/`put`: target Signal K path (own vessel), with an autocomplete/searchable dropdown (native `<datalist>`) populated from every path currently known to the server (`GET /paths`, backed by `app.streambundle.getAvailablePaths()`) - free text is also accepted, since the target path may not exist yet or may itself use placeholders. For `rest`: the full URL to call - no path autocomplete, since it isn't a Signal K path. |
 | HTTP method (`ACTION` `rest` mode only) | `GET`, `POST`, or `PUT`. Defaults to `GET`. |
 | Value to write / Request body (`ACTION` only) | For `delta`/`put`: the value to write. For `rest`: the request body sent for `POST`/`PUT` (ignored for `GET`). Plain text either way. May contain `{ref}` placeholders: `{vessel}`/`{path}`/`{uuid}` as usual, or a dot-path into the *triggering notification's own value* (e.g. `{state}`, `{status.isAcknowledged}`). A value that's entirely one placeholder keeps that reference's real type (so a boolean status flag stays a boolean); otherwise placeholders are stringified into the surrounding text. After resolution, a string result gets one extra `JSON.parse` pass as type coercion - `true`/`42`/`{"a":1}` become their real types, anything not valid JSON (e.g. `on`) stays a plain string. |
-| Also forward (`ACTION` only) | Optional. Whether to *also* forward the notification via the normal target path template mechanism (same `{uuid}`-per-instance path reuse and clear-tracking as `ACCEPT`), in addition to the write/call. Independent of it - the write/call always happens (if a path/URL is set) regardless of this toggle. |
+| Also forward (`ACTION` only) | Optional. Whether to *also* forward the notification the same way `ACCEPT` does (to the fixed path below), in addition to the write/call. Independent of it - the write/call always happens (if a path/URL is set) regardless of this toggle. |
 | Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright. |
-| Target path template | Only for `ACCEPT`/`MODIFY` rules, and `ACTION` rules with "Also forward" on. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{path}.dsc-{uuid}` |
 | Timebox | Optional. Restricts the rule to only match within a tolerance window (in minutes) around one or more UTC anchor times. Entries are semicolon-separated and can be either `HH:MM` (e.g. `02:15; 06:15; 10:15; 14:15; 18:15; 22:15 ±5m` for a coastal station's 4-hourly broadcasts) or, for expert use, a standard 5-field crontab expression (`minute hour dom month dow`, UTC), e.g. `15 2,6,10,14,18,22 * * *` for the same schedule, or `0 8 * * 0` for "every Sunday at 08:00". Disabled by default (rule matches at any time). |
 | Skip while moored / Skip while anchored | Optional, independent toggles (either or both can be on). If the own vessel's `navigation.state` is currently `moored` and "skip while moored" is on (or `anchored` and "skip while anchored" is on), this rule is skipped as if it didn't match — evaluation falls through to the next rule, or to the default policy. |
 
@@ -89,7 +91,7 @@ the notification normally:
 - Write mode: `delta`
 - Path to write to: `notifications.acknowledged.{path}`
 - Value to write: `{status.isAcknowledged}`
-- Also forward: on, with the usual target path template
+- Also forward: on
 
 Call an external webhook (e.g. a Node-RED flow or Home Assistant
 automation) when a distress-priority notification comes in, posting a
@@ -156,7 +158,6 @@ Example ruleset:
         "alwaysAcceptNormal": false
       },
       "target": "DROP",
-      "targetPathTemplate": "notifications.received.{path}.dsc-{uuid}",
       "modify": { "state": null },
       "action": { "mode": "delta", "path": "", "value": "", "method": "GET", "forward": false }
     }

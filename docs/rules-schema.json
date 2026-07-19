@@ -153,7 +153,7 @@
           "default": "GET"
         },
         "forward": {
-          "description": "Whether to also forward the notification via the normal targetPathTemplate mechanism, same as ACCEPT would (with the same {uuid}-per-instance path reuse and clear-tracking).",
+          "description": "Whether to also forward the notification the same way ACCEPT does (to the fixed notifications.received.{path}.dsc-{uuid} path, with the same {uuid}-per-instance path reuse and clear-tracking).",
           "type": "boolean",
           "default": false
         }
@@ -181,15 +181,10 @@
         },
         "match": { "$ref": "#/$defs/match" },
         "target": {
-          "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see `modify`), ACTION (write an arbitrary value to an arbitrary path, see `action`), or DROP (suppress silently).",
+          "description": "What happens to a notification this rule matches: ACCEPT (forward, always to notifications.received.{path}.dsc-{uuid} on the own vessel - not configurable per rule), MODIFY (forward the same way, with an override applied first, see `modify`), ACTION (write an arbitrary value to an arbitrary path or call an arbitrary URL, see `action`), or DROP (suppress silently).",
           "type": "string",
           "enum": ["ACCEPT", "MODIFY", "ACTION", "DROP"],
           "default": "ACCEPT"
-        },
-        "targetPathTemplate": {
-          "description": "Used when target is ACCEPT or MODIFY, and optionally by ACTION when action.forward is true. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
-          "type": "string",
-          "default": "notifications.received.{path}.dsc-{uuid}"
         },
         "modify": {
           "$ref": "#/$defs/modify",
@@ -197,10 +192,10 @@
         },
         "action": {
           "$ref": "#/$defs/action",
-          "default": { "mode": "delta", "path": "", "value": "", "forward": false }
+          "default": { "mode": "delta", "path": "", "value": "", "method": "GET", "forward": false }
         }
       },
-      "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify", "action"],
+      "required": ["id", "label", "enabled", "match", "target", "modify", "action"],
       "additionalProperties": false
     }
   }

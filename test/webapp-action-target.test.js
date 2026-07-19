@@ -57,7 +57,7 @@ test('webapp: creating an ACTION rule via the modal saves the expected shape and
   }
 })
 
-test('webapp: toggling "also forward" for an ACTION rule shows the target path template field', async () => {
+test('webapp: the "also forward" checkbox for an ACTION rule toggles and saves correctly', async () => {
   const backend = createHarness()
   const { doc, findButtonByText, unmount } = await mountWebapp(backend)
 
@@ -70,24 +70,21 @@ test('webapp: toggling "also forward" for an ACTION rule shows the target path t
     targetSelect.dispatchEvent(new doc.defaultView.Event('change', { bubbles: true }))
     await new Promise((resolve) => setTimeout(resolve, 50))
 
-    assert.equal(
-      [...doc.querySelectorAll('.modal label')].some((l) => l.textContent.includes('Target path template')),
-      false,
-      'target path template should be hidden until "also forward" is checked'
-    )
-
     const forwardCheckbox = [...doc.querySelectorAll('.modal input[type="checkbox"]')].find((c) =>
       c.closest('label').textContent.includes('Also forward this notification')
     )
     assert.ok(forwardCheckbox)
+    assert.equal(forwardCheckbox.checked, false)
     forwardCheckbox.click()
     await new Promise((resolve) => setTimeout(resolve, 50))
+    assert.equal(forwardCheckbox.checked, true)
 
-    assert.equal(
-      [...doc.querySelectorAll('.modal label')].some((l) => l.textContent.includes('Target path template')),
-      true,
-      'target path template should appear once "also forward" is checked'
-    )
+    findButtonByText('Save rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const saved = backend.call('GET', '/rules').json[0]
+    assert.equal(saved.action.forward, true)
+    assert.equal(saved.targetPathTemplate, undefined, 'targetPathTemplate should no longer be a rule field at all')
   } finally {
     unmount()
     backend.cleanup()

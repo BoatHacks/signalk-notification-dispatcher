@@ -58,6 +58,7 @@ test('migration: legacy flat rules.json is upgraded to the new ruleset shape on 
   assert.equal(migrated1.target, 'DROP')
   assert.equal(migrated1.match.path, 'safety.*')
   assert.deepEqual(migrated1.match.states, ['alert'])
+  assert.equal(migrated1.targetPathTemplate, undefined, 'the removed targetPathTemplate field should not survive migration')
 
   const migrated2 = ruleset.rules.find((r) => r.id === 'legacy2')
   assert.equal(migrated2.target, 'ACCEPT')

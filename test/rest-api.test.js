@@ -13,7 +13,6 @@ test('rest-api: POST /rules creates a rule with sane defaults', () => {
   assert.equal(res.json.match.path, '*')
   assert.equal(res.json.match.vessel, '*')
   assert.deepEqual(res.json.match.states, ['alert', 'warn', 'alarm', 'emergency'])
-  assert.equal(res.json.targetPathTemplate, 'notifications.received.{path}.dsc-{uuid}')
   h.cleanup()
 })
 

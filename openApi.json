@@ -446,7 +446,7 @@
           },
           "forward": {
             "type": "boolean",
-            "description": "Whether to also forward the notification via the normal targetPathTemplate mechanism, same as ACCEPT would (with the same {uuid}-per-instance path reuse and clear-tracking).",
+            "description": "Whether to also forward the notification the same way ACCEPT does (to the fixed notifications.received.{path}.dsc-{uuid} path, with the same {uuid}-per-instance path reuse and clear-tracking).",
             "default": false
           }
         },
@@ -472,19 +472,14 @@
           "match": { "$ref": "#/components/schemas/Match" },
           "target": {
             "type": "string",
-            "description": "What happens to a notification this rule matches: ACCEPT (forward), MODIFY (forward with an override applied first, see modify), ACTION (write a value to an arbitrary path or call an arbitrary URL, see action), or DROP (suppress silently).",
+            "description": "What happens to a notification this rule matches: ACCEPT (forward, always to notifications.received.{path}.dsc-{uuid} on the own vessel - not configurable per rule), MODIFY (forward the same way, with an override applied first, see modify), ACTION (write a value to an arbitrary path or call an arbitrary URL, see action), or DROP (suppress silently).",
             "enum": ["ACCEPT", "MODIFY", "ACTION", "DROP"],
             "default": "ACCEPT"
-          },
-          "targetPathTemplate": {
-            "type": "string",
-            "description": "Used when target is ACCEPT or MODIFY, and optionally by ACTION when action.forward is true. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
-            "default": "notifications.received.{path}.dsc-{uuid}"
           },
           "modify": { "$ref": "#/components/schemas/Modify" },
           "action": { "$ref": "#/components/schemas/Action" }
         },
-        "required": ["id", "label", "enabled", "match", "target", "targetPathTemplate", "modify", "action"]
+        "required": ["id", "label", "enabled", "match", "target", "modify", "action"]
       },
       "RuleInput": {
         "description": "Same shape as Rule, but every field is optional - anything omitted is filled with its default (see Rule for defaults). Used for POST /rules (create) and PUT /rules/{id} (update, merged into the existing rule).",
