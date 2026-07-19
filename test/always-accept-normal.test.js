@@ -86,3 +86,67 @@ test('alwaysAcceptNormal: defaults to false on a freshly created rule', () => {
   assert.equal(created.match.alwaysAcceptNormal, false)
   h.cleanup()
 })
+
+test('alwaysAcceptNormal: a MODIFY rule is bypassed (forwarded via ACCEPT unmodified) on a return to normal', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', {
+    label: 'downgrade palma securite',
+    match: { path: 'safety.*', vessel: '*', states: ['alarm'], alwaysAcceptNormal: true },
+    target: 'MODIFY',
+    modify: { state: 'warn' },
+  })
+
+  // Normal MODIFY behavior for a matching (alarm) state.
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'alarm' })
+  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'warn', 'alarm should still be downgraded as configured')
+
+  // A return to normal should bypass MODIFY entirely and forward unmodified.
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'normal' })
+  const forwardedValue = h.state.forwarded[1].updates[0].values[0].value
+  assert.equal(forwardedValue.state, 'normal', 'the normal state should be forwarded as-is, not overridden by modify.state')
+
+  const activity = h.call('GET', '/activity').json
+  assert.equal(activity[0].action, 'accept', 'the return-to-normal should be logged as accept, not modify')
+  h.cleanup()
+})
+
+test('alwaysAcceptNormal: also bypasses MODIFY for nominal, not just normal', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', {
+    match: { path: 'safety.*', vessel: '*', states: ['alarm'], alwaysAcceptNormal: true },
+    target: 'MODIFY',
+    modify: { state: 'warn' },
+  })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'nominal' })
+  assert.equal(h.state.forwarded[0].updates[0].values[0].value.state, 'nominal')
+  h.cleanup()
+})
+
+test('alwaysAcceptNormal: without the flag, MODIFY still applies even if normal were explicitly in the states list', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', {
+    match: { path: 'safety.*', vessel: '*', states: ['alarm', 'normal'] },
+    target: 'MODIFY',
+    modify: { state: 'warn' },
+  })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'normal' })
+  assert.equal(
+    h.state.forwarded[0].updates[0].values[0].value.state,
+    'warn',
+    'without alwaysAcceptNormal, a normal state matched via the states list still goes through MODIFY as configured'
+  )
+  h.cleanup()
+})
+
+test('alwaysAcceptNormal: does not affect a DROP-targeted rule (only MODIFY is bypassed)', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', {
+    match: { path: 'safety.*', vessel: '*', states: ['alarm'], alwaysAcceptNormal: true },
+    target: 'DROP',
+  })
+  h.sendDelta({ mmsi: '1', path: 'safety.securite', state: 'normal' })
+  assert.equal(h.state.forwarded.length, 0, 'a DROP rule matched via alwaysAcceptNormal should still drop, not forward')
+  const activity = h.call('GET', '/activity').json
+  assert.equal(activity[0].action, 'drop')
+  h.cleanup()
+})

@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- `alwaysAcceptNormal`: a `MODIFY`-target rule now bypasses the override entirely on a `nominal`/`normal` transition and forwards it unmodified via `ACCEPT` instead - previously it would still apply `modify.state`, overriding the notification's genuine return-to-normal state with whatever the rule was configured to downgrade *other* states to. A `DROP`-target rule is unaffected and still drops as configured
 - Rule editor: new "Always accept state changes to nominal/normal" checkbox in the Add/Edit rule modal (`match.alwaysAcceptNormal`). When on, the rule also matches a transition to `nominal`/`normal` regardless of the states checked above - other match conditions (path, vessel, timebox, vessel-state gate) still apply as usual. Shown in the rule table's States column and documented in `docs/rules-schema.json`
 - Changed the default target path template from `notifications.received.{vessel}.{path}` to `notifications.received.{path}.dsc-{uuid}` - matches the `<transport>-<uuid>` convention discussed for the specification's `received.<severity>.<key>` structure, using `dsc` as the default transport label
 - Recent activity log: each entry is now a collapsible element (collapsed by default) containing the full JSON for that specific notification event

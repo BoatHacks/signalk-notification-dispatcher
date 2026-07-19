@@ -404,7 +404,15 @@ module.exports = function (app) {
           return
         }
 
-        const isModify = effectiveRule.target === 'MODIFY' && effectiveRule.modify && effectiveRule.modify.state
+        const isNormalTransition = state === 'nominal' || state === 'normal'
+        const matchedViaAlwaysAcceptNormal =
+          matchedRule && matchedRule.match && matchedRule.match.alwaysAcceptNormal && isNormalTransition
+
+        const isModify =
+          !matchedViaAlwaysAcceptNormal &&
+          effectiveRule.target === 'MODIFY' &&
+          effectiveRule.modify &&
+          effectiveRule.modify.state
         const outValue = isModify ? { ...value, state: effectiveRule.modify.state } : value
 
         // Reuse the path this same (still-active) source notification was
