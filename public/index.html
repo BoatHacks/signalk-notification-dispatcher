@@ -93,8 +93,14 @@
   }
   details { margin-top: 16px; background: var(--panel); border-radius: 8px; border: 1px solid var(--border); }
   summary { padding: 10px 12px; cursor: pointer; font-size: 13px; color: var(--text-dim); }
-  .activity-item { padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; display: flex; gap: 8px; align-items: baseline; }
+  .activity-item { border-top: 1px solid var(--border); font-size: 12px; }
+  .activity-item summary { padding: 8px 12px; display: flex; gap: 8px; align-items: baseline; cursor: pointer; color: var(--text); flex-wrap: wrap; }
   .activity-item .path { color: var(--text-dim); }
+  .activity-item-json {
+    margin: 0 12px 10px; padding: 10px; background: var(--panel-alt); border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; line-height: 1.5;
+    overflow-x: auto; color: var(--text);
+  }
   code { background: var(--panel-alt); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
   .json-editor { padding: 12px; }
   .json-editor textarea {
@@ -519,12 +525,15 @@ function App() {
         <details>
           <summary>Recent activity (${activity.length})</summary>
           ${activity.length === 0 ? html`<div class="empty">Nothing accepted or dropped yet.</div>` : activity.map((a) => html`
-            <div class="activity-item">
-              <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : a.action === 'clear' ? 'CLEAR' : 'DROP'}">${a.action}</span>
-              <span class="path">${a.sourcePath}</span>
-              ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
-              <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>
-            </div>
+            <details class="activity-item">
+              <summary>
+                <span class="badge ${a.action === 'accept' ? 'ACCEPT' : a.action === 'modify' ? 'MODIFY' : a.action === 'clear' ? 'CLEAR' : 'DROP'}">${a.action}</span>
+                <span class="path">${a.sourcePath}</span>
+                ${a.targetPath && html`<span>→ <span class="path">${a.targetPath}</span></span>`}
+                <span class="states">${a.state} · ${a.vessel} · ${a.rule}</span>
+              </summary>
+              <pre class="activity-item-json">${JSON.stringify(a, null, 2)}</pre>
+            </details>
           `)}
         </details>
       </main>

@@ -62,7 +62,8 @@ Dispatcher). Each rule has:
 | Skip while moored / Skip while anchored | Optional, independent toggles (either or both can be on). If the own vessel's `navigation.state` is currently `moored` and "skip while moored" is on (or `anchored` and "skip while anchored" is on), this rule is skipped as if it didn't match — evaluation falls through to the next rule, or to the default policy. |
 
 A recent-activity log at the bottom of the webapp shows the last 200
-accept/drop decisions, for debugging your rules.
+accept/drop/modify/clear decisions, for debugging your rules. Each entry is
+collapsible and expands to the full JSON for that specific event.
 
 ## Default policy
 
