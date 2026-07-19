@@ -4,7 +4,7 @@ const crypto = require('crypto')
 
 const ALL_STATES = ['nominal', 'normal', 'alert', 'warn', 'alarm', 'emergency']
 const MAX_ACTIVITY_LOG = 200
-const DEFAULT_TARGET_PATH_TEMPLATE = 'notifications.received.{vessel}.{path}'
+const DEFAULT_TARGET_PATH_TEMPLATE = 'notifications.received.{path}.dsc-{uuid}'
 
 module.exports = function (app) {
   let unsubscribes = []

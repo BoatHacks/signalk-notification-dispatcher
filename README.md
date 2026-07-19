@@ -57,7 +57,7 @@ Dispatcher). Each rule has:
 | States | Which notification states (`nominal`/`normal`/`alert`/`warn`/`alarm`/`emergency`) trigger the rule. The editor shows the matching ITU priority category next to `emergency` (distress), `alarm` (urgency), and `warn` (safety), per the specification's recommended severity mapping. |
 | Target | `ACCEPT` (forward), `MODIFY` (forward, overriding a field first), or `DROP` (suppress) |
 | Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright. |
-| Target path template | Only for `ACCEPT`/`MODIFY` rules. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{vessel}.{path}` |
+| Target path template | Only for `ACCEPT`/`MODIFY` rules. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{path}.dsc-{uuid}` |
 | Timebox | Optional. Restricts the rule to only match within a tolerance window (in minutes) around one or more UTC anchor times. Entries are semicolon-separated and can be either `HH:MM` (e.g. `02:15; 06:15; 10:15; 14:15; 18:15; 22:15 ±5m` for a coastal station's 4-hourly broadcasts) or, for expert use, a standard 5-field crontab expression (`minute hour dom month dow`, UTC), e.g. `15 2,6,10,14,18,22 * * *` for the same schedule, or `0 8 * * 0` for "every Sunday at 08:00". Disabled by default (rule matches at any time). |
 | Skip while moored / Skip while anchored | Optional, independent toggles (either or both can be on). If the own vessel's `navigation.state` is currently `moored` and "skip while moored" is on (or `anchored` and "skip while anchored" is on), this rule is skipped as if it didn't match — evaluation falls through to the next rule, or to the default policy. |
 
@@ -111,7 +111,7 @@ Example ruleset:
         "vesselState": { "blockWhenMoored": false, "blockWhenAnchored": false }
       },
       "target": "DROP",
-      "targetPathTemplate": "notifications.received.{vessel}.{path}",
+      "targetPathTemplate": "notifications.received.{path}.dsc-{uuid}",
       "modify": { "state": null }
     }
   ]

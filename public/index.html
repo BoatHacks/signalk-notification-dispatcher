@@ -144,7 +144,7 @@ function emptyRule() {
       vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
     },
     target: 'ACCEPT',
-    targetPathTemplate: 'notifications.received.{vessel}.{path}',
+    targetPathTemplate: 'notifications.received.{path}.dsc-{uuid}',
     modify: { state: null },
   }
 }

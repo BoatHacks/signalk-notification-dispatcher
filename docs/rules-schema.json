@@ -148,7 +148,7 @@
         "targetPathTemplate": {
           "description": "Only used when target is ACCEPT or MODIFY. Template for the forwarded path under vessels.self.notifications.*, with {vessel}, {path}, and {uuid} placeholders. Each {uuid} is replaced with a freshly-generated random UUID at forward time (a distinct value per occurrence).",
           "type": "string",
-          "default": "notifications.received.{vessel}.{path}"
+          "default": "notifications.received.{path}.dsc-{uuid}"
         },
         "modify": {
           "$ref": "#/$defs/modify",

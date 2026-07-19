@@ -143,3 +143,15 @@ test('matching: a template without {uuid} is unaffected', () => {
   assert.equal(h.state.forwarded[0].updates[0].values[0].path, 'notifications.received.1.navigation.anchor')
   h.cleanup()
 })
+
+test('matching: default target path template forwards to notifications.received.<path>.dsc-<uuid>', () => {
+  const h = createHarness()
+  h.call('POST', '/rules', { match: { path: 'urgency.*', vessel: '*' }, target: 'ACCEPT' })
+  h.sendDelta({ mmsi: '211234567', path: 'urgency.test', state: 'alarm' })
+
+  const forwardedPath = h.state.forwarded[0].updates[0].values[0].path
+  const match = forwardedPath.match(/^notifications\.received\.urgency\.test\.dsc-(.+)$/)
+  assert.ok(match, `expected the default template's shape, got: ${forwardedPath}`)
+  assert.match(match[1], UUID_RE)
+  h.cleanup()
+})
