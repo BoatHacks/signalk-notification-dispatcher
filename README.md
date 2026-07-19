@@ -55,6 +55,7 @@ Dispatcher). Each rule has:
 | Path pattern | Matched against the notification path with `notifications.` stripped, e.g. `navigation.anchor*`. `*` matches anything. |
 | Vessel filter | MMSI, full context string, or `*` for any vessel |
 | States | Which notification states (`nominal`/`normal`/`alert`/`warn`/`alarm`/`emergency`) trigger the rule. The editor shows the matching ITU priority category next to `emergency` (distress), `alarm` (urgency), and `warn` (safety), per the specification's recommended severity mapping. |
+| Always accept state changes to nominal/normal | Optional. When on, this rule also matches a transition to `nominal` or `normal` regardless of the states checked above - useful for a rule narrowly scoped to e.g. `alarm`/`emergency` that should still catch the source returning to normal, without cluttering the main states filter. Other match conditions (path, vessel, timebox, vessel-state gate) still apply as usual. |
 | Target | `ACCEPT` (forward), `MODIFY` (forward, overriding a field first), or `DROP` (suppress) |
 | Override state to | Only for `MODIFY` rules. Rewrites the notification's `state` before forwarding, e.g. downgrading a recurring securité broadcast from `alarm` to `warn` instead of dropping it outright. |
 | Target path template | Only for `ACCEPT`/`MODIFY` rules. `{vessel}`, `{path}`, and `{uuid}` placeholders. Each `{uuid}` is replaced with a freshly-generated random UUID at forward time (a different value per occurrence, and per notification) - useful for disambiguating concurrent notifications, e.g. per the `<transport>-<uuid>` convention discussed for `received.<severity>.<key>` in the specification. Default: `notifications.received.{path}.dsc-{uuid}` |
@@ -108,7 +109,8 @@ Example ruleset:
           "times": ["02:15", "06:15", "10:15", "14:15", "18:15", "22:15"],
           "toleranceMinutes": 5
         },
-        "vesselState": { "blockWhenMoored": false, "blockWhenAnchored": false }
+        "vesselState": { "blockWhenMoored": false, "blockWhenAnchored": false },
+        "alwaysAcceptNormal": false
       },
       "target": "DROP",
       "targetPathTemplate": "notifications.received.{path}.dsc-{uuid}",

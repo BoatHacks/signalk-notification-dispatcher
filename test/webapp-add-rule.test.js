@@ -41,3 +41,38 @@ test('webapp: a rule added via the modal shows up in the table and the JSON edit
     backend.cleanup()
   }
 })
+
+test('webapp: the "always accept nominal/normal" checkbox in the Add rule modal is saved and takes effect', async () => {
+  const backend = createHarness()
+  const { doc, findButtonByText, unmount } = await mountWebapp(backend)
+
+  try {
+    findButtonByText('+ Add rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    const checkboxes = [...doc.querySelectorAll('.modal input[type="checkbox"]')]
+    const normalCheckbox = checkboxes.find(
+      (c) => c.closest('label').textContent.includes('Always accept state changes to nominal/normal')
+    )
+    assert.ok(normalCheckbox, 'the checkbox should be present in the modal')
+    assert.equal(normalCheckbox.checked, false)
+
+    normalCheckbox.click()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    findButtonByText('Save rule').click()
+    await new Promise((resolve) => setTimeout(resolve, 300))
+
+    const saved = backend.call('GET', '/rules').json[0]
+    assert.equal(saved.match.alwaysAcceptNormal, true)
+
+    assert.match(
+      doc.querySelector('table tbody tr').textContent,
+      /nominal\/normal/,
+      'the rule table should indicate the option is enabled'
+    )
+  } finally {
+    unmount()
+    backend.cleanup()
+  }
+})

@@ -45,6 +45,7 @@ module.exports = function (app) {
       states: ['alert', 'warn', 'alarm', 'emergency'],
       timebox: { enabled: false, times: [], toleranceMinutes: 5 },
       vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
+      alwaysAcceptNormal: false,
     }
   }
 
@@ -80,6 +81,12 @@ module.exports = function (app) {
           blockWhenMoored: !!(match.vesselState && match.vesselState.blockWhenMoored),
           blockWhenAnchored: !!(match.vesselState && match.vesselState.blockWhenAnchored),
         },
+        // When enabled, the rule also matches state transitions to
+        // "nominal"/"normal" regardless of the states list above - so a
+        // rule narrowly scoped to e.g. alarm/emergency can still catch a
+        // source returning to normal, without needing nominal/normal added
+        // to its main severity filter.
+        alwaysAcceptNormal: !!match.alwaysAcceptNormal,
       },
       target: src.target === 'DROP' ? 'DROP' : src.target === 'MODIFY' ? 'MODIFY' : 'ACCEPT',
       targetPathTemplate:
@@ -310,7 +317,8 @@ module.exports = function (app) {
     if (!vesselOk) return false
 
     const states = match.states === undefined || match.states === null ? ALL_STATES : match.states
-    if (!states.includes(state)) return false
+    const alwaysAcceptsThisState = match.alwaysAcceptNormal && (state === 'nominal' || state === 'normal')
+    if (!states.includes(state) && !alwaysAcceptsThisState) return false
 
     if (!isWithinTimebox(match.timebox, timestamp)) return false
 

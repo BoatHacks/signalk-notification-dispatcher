@@ -78,6 +78,7 @@
   .modal h2 { margin: 0 0 14px; font-size: 16px; }
   .field { margin-bottom: 12px; }
   .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+  .field .checkbox-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--text); }
   .field input[type=text], .field select, .field textarea {
     width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border);
     background: var(--panel-alt); color: var(--text); font-size: 13px; font-family: inherit;
@@ -142,6 +143,7 @@ function emptyRule() {
       states: ['alert', 'warn', 'alarm', 'emergency'],
       timebox: { enabled: false, times: [], toleranceMinutes: 5 },
       vesselState: { blockWhenMoored: false, blockWhenAnchored: false },
+      alwaysAcceptNormal: false,
     },
     target: 'ACCEPT',
     targetPathTemplate: 'notifications.received.{path}.dsc-{uuid}',
@@ -206,6 +208,10 @@ function RuleModal({ rule, onSave, onClose }) {
               <label><input type="checkbox" checked=${match.states.includes(s)} onChange=${() => toggleState(s)} /> ${s}${STATE_ITU_CATEGORY[s] ? html` <span class="states">(${STATE_ITU_CATEGORY[s]})</span>` : ''}</label>
             `)}
           </div>
+          <label class="checkbox-row">
+            <input type="checkbox" checked=${match.alwaysAcceptNormal} onChange=${(e) => setMatch({ alwaysAcceptNormal: e.target.checked })} />
+            Always accept state changes to nominal/normal, regardless of the states checked above
+          </label>
         </div>
 
         <div class="field">
@@ -489,7 +495,7 @@ function App() {
                   <td>${rule.label || html`<em>(unlabeled)</em>`}</td>
                   <td><code>${rule.match.path}</code></td>
                   <td><code>${rule.match.vessel}</code></td>
-                  <td class="states">${(rule.match.states || []).join(', ')}</td>
+                  <td class="states">${(rule.match.states || []).join(', ')}${rule.match.alwaysAcceptNormal ? ' (+ nominal/normal)' : ''}</td>
                   <td class="states">
                     ${rule.match.timebox && rule.match.timebox.enabled && (rule.match.timebox.times || []).length
                       ? html`${rule.match.timebox.times.join('; ')} ±${rule.match.timebox.toleranceMinutes ?? 5}m`

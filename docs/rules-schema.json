@@ -101,9 +101,14 @@
         "vesselState": {
           "$ref": "#/$defs/vesselState",
           "default": { "blockWhenMoored": false, "blockWhenAnchored": false }
+        },
+        "alwaysAcceptNormal": {
+          "description": "When true, this rule also matches state transitions to \"nominal\" or \"normal\" regardless of the `states` list above - so a rule narrowly scoped to e.g. alarm/emergency can still catch a source returning to normal, without needing nominal/normal added to its main severity filter.",
+          "type": "boolean",
+          "default": false
         }
       },
-      "required": ["path", "vessel", "states", "timebox", "vesselState"],
+      "required": ["path", "vessel", "states", "timebox", "vesselState", "alwaysAcceptNormal"],
       "additionalProperties": false
     },
 
