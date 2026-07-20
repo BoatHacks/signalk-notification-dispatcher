@@ -15,8 +15,8 @@ module.exports = function (app) {
   // Tracks, per source notification (keyed by "<context>|<subPath>"), the
   // exact target path it was last forwarded/modified to. This is what lets
   // a later clear (value === null) land on the SAME node instead of a
-  // freshly re-templated one - which matters since DEFAULT_TARGET_PATH_TEMPLATE
-  // contains {uuid}, and re-templating generates a brand new random path
+  // freshly re-templated one - which matters whenever targetPathTemplate
+  // contains {uuid}, since re-templating generates a brand new random path
   // every call. Without this, a clear would never reach the originally
   // forwarded copy (leaving it stuck forever) while also creating an
   // unrelated, immediately-stray null-valued entry at a new path. Entries
@@ -27,8 +27,7 @@ module.exports = function (app) {
   //   - `policy` is the default target (ACCEPT|DROP) applied when no rule matches
   //   - `rules` is an ordered list, evaluated top to bottom, first match wins
   // Each rule has a `match` block (the conditions) and a `target` (the action:
-  // ACCEPT = forward, DROP = suppress). Forwarding always uses
-  // DEFAULT_TARGET_PATH_TEMPLATE - it isn't configurable per rule.
+  // ACCEPT = forward, DROP = suppress), plus a targetPathTemplate for ACCEPT.
   let ruleset = { policy: 'ACCEPT', rules: [] }
 
   const plugin = {
@@ -98,6 +97,8 @@ module.exports = function (app) {
             : src.target === 'ACTION'
               ? 'ACTION'
               : 'ACCEPT',
+      targetPathTemplate:
+        typeof src.targetPathTemplate === 'string' ? src.targetPathTemplate : DEFAULT_TARGET_PATH_TEMPLATE,
       // Only meaningful when target === 'MODIFY': overrides the notification's
       // own fields while forwarding it. Currently supports overriding `state`
       // (e.g. downgrading a recurring securité call from alarm to warn
@@ -120,8 +121,8 @@ module.exports = function (app) {
       // actuation); 'rest' calls an arbitrary URL over HTTP (`path` is the
       // URL, `method` the HTTP method, `value` the request body for
       // PUT/POST) - not scoped to Signal K at all, for calling out to other
-      // services. `forward` optionally also forwards the notification too,
-      // using the fixed DEFAULT_TARGET_PATH_TEMPLATE, same as ACCEPT would.
+      // services. `forward` optionally also forwards the notification via
+      // the normal targetPathTemplate mechanism, same as ACCEPT would.
       action: {
         mode: ['put', 'rest'].includes(src.action && src.action.mode) ? src.action.mode : 'delta',
         path: typeof (src.action && src.action.path) === 'string' ? src.action.path : '',
@@ -148,6 +149,7 @@ module.exports = function (app) {
       enabled: old.enabled,
       label: old.label,
       target: old.action === 'suppress' ? 'DROP' : 'ACCEPT',
+      targetPathTemplate: old.targetPathTemplate,
       match: {
         path: old.pathPattern,
         vessel: old.vesselFilter,
@@ -408,8 +410,9 @@ module.exports = function (app) {
     }
   }
 
-  function buildTargetPath({ subPath, vesselLabel, value }) {
-    return resolveTemplateString(DEFAULT_TARGET_PATH_TEMPLATE, { subPath, vesselLabel, notificationValue: value || null })
+  function buildTargetPath(rule, { subPath, vesselLabel, value }) {
+    const template = rule.targetPathTemplate || DEFAULT_TARGET_PATH_TEMPLATE
+    return resolveTemplateString(template, { subPath, vesselLabel, notificationValue: value || null })
   }
 
   // Performs an ACTION rule's configured write. Resolves action.path/value
@@ -511,6 +514,7 @@ module.exports = function (app) {
           id: 'default-policy',
           label: `default policy (${ruleset.policy})`,
           target: ruleset.policy,
+          targetPathTemplate: DEFAULT_TARGET_PATH_TEMPLATE,
         }
 
         if (effectiveRule.target === 'DROP') {
@@ -550,7 +554,7 @@ module.exports = function (app) {
           if (action.forward) {
             targetPath = forwardedTargetPaths.get(trackingKey)
             if (!targetPath) {
-              targetPath = buildTargetPath({ subPath, vesselLabel, value })
+              targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel, value })
               forwardedTargetPaths.set(trackingKey, targetPath)
             }
             app.handleMessage(plugin.id, {
@@ -590,7 +594,7 @@ module.exports = function (app) {
         // and would make clearing it (above) impossible to target correctly.
         let targetPath = forwardedTargetPaths.get(trackingKey)
         if (!targetPath) {
-          targetPath = buildTargetPath({ subPath, vesselLabel, value })
+          targetPath = buildTargetPath(effectiveRule, { subPath, vesselLabel })
           forwardedTargetPaths.set(trackingKey, targetPath)
         }
 
