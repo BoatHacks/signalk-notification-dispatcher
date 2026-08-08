@@ -1,3 +1,5 @@
+@no-slop.md
+
 # signalk-notification-dispatcher
 
 SignalK plugin: rule-based forwarding/suppression of other vessels'
